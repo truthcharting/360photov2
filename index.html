@@ -1384,20 +1384,20 @@
 
         // Update device orientation using WebXR
         function updateDeviceOrientation() {
-    if (!threeCamera) return;
+        if (!threeCamera) return;
 
-    // Convert device orientation to radians
-    const alphaRad = THREE.MathUtils.degToRad(orientationData.alpha || 0); // Z
-    const betaRad = THREE.MathUtils.degToRad(orientationData.beta || 0);   // X
-    const gammaRad = THREE.MathUtils.degToRad(orientationData.gamma || 0); // Y
+        // Convert device orientation to radians
+        const alphaRad = THREE.MathUtils.degToRad(orientationData.alpha || 0); // Z
+        const betaRad = THREE.MathUtils.degToRad(orientationData.beta || 0);   // X
+        const gammaRad = THREE.MathUtils.degToRad(orientationData.gamma || 0); // Y
 
-    // Device orientation ZXY mapping
-    const euler = new THREE.Euler(betaRad, gammaRad, alphaRad, 'ZXY');
+        // Device orientation ZXY mapping
+        const euler = new THREE.Euler(betaRad, gammaRad, alphaRad, 'ZXY');
 
-    // Create quaternion from Euler and apply to camera
-    deviceOrientationQuaternion.setFromEuler(euler);
-    threeCamera.quaternion.copy(deviceOrientationQuaternion);
-}
+        // Create quaternion from Euler and apply to camera
+        deviceOrientationQuaternion.setFromEuler(euler);
+        threeCamera.quaternion.copy(deviceOrientationQuaternion);
+    }
 
         // Render Three.js scene
         function renderThreeScene() {
