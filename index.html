@@ -537,6 +537,7 @@
                 <div id="captureCount">0 / 51 captured</div>
             </div>
             <div class="ar-controls">
+                <button class="control-button" onclick="requestOrientationAccess()">Enable AR</button>
                 <button class="control-button" onclick="toggleHelp()">Help</button>
                 <button class="capture-button" onclick="manualCapture()">📸</button>
                 <button class="control-button" onclick="finishCapture()">Done</button>
@@ -637,6 +638,20 @@
             document.getElementById('errorMessage').classList.remove('show');
         }
         
+        // Request orientation access from AR screen
+        async function requestOrientationAccess() {
+            const success = await testOrientationAccess();
+            if (success) {
+                // Hide the "Enable AR" button since it's now working
+                const enableButton = document.querySelector('.ar-controls .control-button');
+                if (enableButton && enableButton.textContent === 'Enable AR') {
+                    enableButton.style.display = 'none';
+                }
+            } else {
+                showError('Could not enable AR orientation. Using manual mode.');
+            }
+        }
+        
         // Test camera only (for debugging)
         async function testCameraOnly() {
             try {
@@ -646,22 +661,10 @@
                 });
                 
                 // Show success
-                updateStatus('Camera test successful!');
+                alert('Camera test successful! ✅');
                 
                 // Stop test stream
                 testStream.getTracks().forEach(track => track.stop());
-                
-                // Show AR screen without full initialization
-                showScreen('arScreen');
-                const video = document.getElementById('cameraPreview');
-                video.srcObject = null;
-                
-                // Show manual capture mode
-                updateStatus('Camera works! You can use manual capture mode.');
-                
-                setTimeout(() => {
-                    showScreen('permissionScreen');
-                }, 2000);
                 
             } catch (error) {
                 console.error('Camera test error:', error);
@@ -724,31 +727,50 @@
                     };
                 });
                 
-                // Request device orientation permission (iOS 13+)
-                let orientationPermission = 'granted';
-                if (typeof DeviceOrientationEvent !== 'undefined' && 
-                    typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    try {
-                        orientationPermission = await DeviceOrientationEvent.requestPermission();
-                        if (orientationPermission !== 'granted') {
-                            showError('Device orientation access denied. AR guidance will be limited.');
-                        }
-                    } catch (orientationError) {
-                        console.log('Orientation permission error:', orientationError);
-                        showError('Could not access device orientation. Using manual mode.');
-                    }
-                }
-                
-                // Initialize capture points
+                // Initialize capture points first
                 capturePoints = calculateCapturePoints();
                 setupCaptureDots();
                 
+                // Try to request device orientation permission (iOS 13+)
+                let orientationPermission = 'granted';
+                let hasOrientationSupport = false;
+                
+                if (typeof DeviceOrientationEvent !== 'undefined') {
+                    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                        // iOS 13+ requires explicit permission
+                        try {
+                            orientationPermission = await DeviceOrientationEvent.requestPermission();
+                            hasOrientationSupport = orientationPermission === 'granted';
+                            console.log('iOS orientation permission:', orientationPermission);
+                        } catch (orientationError) {
+                            console.log('Orientation permission error:', orientationError);
+                            hasOrientationSupport = false;
+                        }
+                    } else {
+                        // Android and older iOS
+                        hasOrientationSupport = true;
+                        console.log('Using standard device orientation');
+                    }
+                }
+                
                 // Start orientation tracking if available
-                if (orientationPermission === 'granted') {
-                    window.addEventListener('deviceorientation', handleOrientationChange);
-                    updateStatus('Ready to capture! Move to blue dots');
+                if (hasOrientationSupport) {
+                    window.addEventListener('deviceorientation', handleOrientationChange, true);
+                    
+                    // Test if we're actually getting orientation data
+                    setTimeout(() => {
+                        if (currentOrientation.alpha === 0 && currentOrientation.beta === 0 && currentOrientation.gamma === 0) {
+                            console.log('No orientation data received, switching to manual mode');
+                            updateStatus('No orientation data - using manual mode');
+                            showManualCaptureMode();
+                        } else {
+                            console.log('Orientation tracking active:', currentOrientation);
+                            updateStatus('AR mode active! Move to blue dots');
+                        }
+                    }, 2000);
                 } else {
-                    updateStatus('Camera ready! Use manual capture mode');
+                    updateStatus('Camera ready! Using manual capture mode');
+                    showManualCaptureMode();
                 }
                 
                 showScreen('arScreen');
@@ -781,16 +803,116 @@
             }
         }
         
-        // Orientation handling
+        // Orientation handling with better debugging
         function handleOrientationChange(event) {
-            currentOrientation = {
+            const newOrientation = {
                 alpha: event.alpha || 0,
                 beta: event.beta || 0,
                 gamma: event.gamma || 0
             };
             
-            updateCaptureDots();
-            checkAutoCapture();
+            // Only update if we have real data
+            if (newOrientation.alpha !== null || newOrientation.beta !== null || newOrientation.gamma !== null) {
+                currentOrientation = newOrientation;
+                updateCaptureDots();
+                checkAutoCapture();
+                
+                // Debug logging (remove in production)
+                if (Math.random() < 0.01) { // Log occasionally
+                    console.log('Orientation:', currentOrientation);
+                }
+            }
+        }
+        
+        // Manual capture mode when AR isn't available
+        function showManualCaptureMode() {
+            // Show all dots in a grid pattern for manual capture
+            const dotsContainer = document.getElementById('captureDots');
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            
+            capturePoints.forEach((point, index) => {
+                const dot = document.getElementById(`dot-${index}`);
+                if (!dot) return;
+                
+                // Arrange dots in a 9x6 grid pattern for manual mode
+                const cols = 9;
+                const rows = 6;
+                const col = index % cols;
+                const row = Math.floor(index / cols);
+                
+                const x = (screenWidth / (cols + 1)) * (col + 1);
+                const y = (screenHeight / (rows + 1)) * (row + 1);
+                
+                dot.style.left = `${x}px`;
+                dot.style.top = `${y}px`;
+                dot.style.display = 'block';
+                
+                // Make dots larger and more visible in manual mode
+                dot.style.width = '30px';
+                dot.style.height = '30px';
+                dot.style.fontSize = '16px';
+                
+                if (point.captured) {
+                    dot.classList.add('captured');
+                }
+            });
+            
+            // Update instructions
+            updateStatus('Manual mode: Tap dots to capture from different angles');
+        }
+        
+        // Test orientation access with user gesture
+        async function testOrientationAccess() {
+            try {
+                if (typeof DeviceOrientationEvent !== 'undefined' && 
+                    typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    console.log('Orientation permission result:', permission);
+                    
+                    if (permission === 'granted') {
+                        // Start listening for orientation
+                        window.addEventListener('deviceorientation', handleOrientationChange, true);
+                        
+                        // Test for actual data
+                        setTimeout(() => {
+                            if (currentOrientation.alpha === 0 && currentOrientation.beta === 0) {
+                                console.log('Permission granted but no data received');
+                                showManualCaptureMode();
+                            } else {
+                                console.log('Orientation working!', currentOrientation);
+                                updateCaptureDots(); // Refresh dots with real positioning
+                                updateStatus('AR mode activated! Move to blue dots');
+                            }
+                        }, 1000);
+                        
+                        return true;
+                    } else {
+                        console.log('Orientation permission denied');
+                        return false;
+                    }
+                } else {
+                    // Non-iOS or older iOS
+                    window.addEventListener('deviceorientation', handleOrientationChange, true);
+                    
+                    // Test for data
+                    setTimeout(() => {
+                        if (currentOrientation.alpha === 0 && currentOrientation.beta === 0) {
+                            console.log('No orientation support detected');
+                            showManualCaptureMode();
+                        } else {
+                            updateCaptureDots();
+                            updateStatus('AR mode active! Move to blue dots');
+                        }
+                    }, 1000);
+                    
+                    return true;
+                }
+            } catch (error) {
+                console.error('Orientation test error:', error);
+                return false;
+            }
         }
         
         // Setup capture dots in UI
@@ -808,6 +930,8 @@
         
         // Update dot positions based on orientation
         function updateCaptureDots() {
+            if (!capturePoints || capturePoints.length === 0) return;
+            
             const screenWidth = window.innerWidth;
             const screenHeight = window.innerHeight;
             
@@ -815,33 +939,62 @@
                 const dot = document.getElementById(`dot-${index}`);
                 if (!dot) return;
                 
-                // Convert 3D point to screen coordinates
-                const screenPos = worldToScreen(point, currentOrientation);
+                // Check if we have real orientation data
+                const hasRealOrientation = currentOrientation.alpha !== 0 || 
+                                         currentOrientation.beta !== 0 || 
+                                         currentOrientation.gamma !== 0;
                 
-                if (screenPos.visible) {
-                    dot.style.left = `${screenPos.x}px`;
-                    dot.style.top = `${screenPos.y}px`;
-                    dot.style.display = 'block';
+                if (hasRealOrientation) {
+                    // Use AR positioning
+                    const screenPos = worldToScreen(point, currentOrientation);
                     
-                    // Check if dot is near crosshair
-                    const centerX = screenWidth / 2;
-                    const centerY = screenHeight / 2;
-                    const distance = Math.sqrt(
-                        Math.pow(screenPos.x - centerX, 2) + 
-                        Math.pow(screenPos.y - centerY, 2)
-                    );
-                    
-                    if (distance < 50 && !point.captured) {
-                        dot.classList.add('active');
+                    if (screenPos.visible && screenPos.x >= 0 && screenPos.x <= screenWidth && 
+                        screenPos.y >= 0 && screenPos.y <= screenHeight) {
+                        dot.style.left = `${screenPos.x}px`;
+                        dot.style.top = `${screenPos.y}px`;
+                        dot.style.display = 'block';
+                        
+                        // Check if dot is near crosshair
+                        const centerX = screenWidth / 2;
+                        const centerY = screenHeight / 2;
+                        const distance = Math.sqrt(
+                            Math.pow(screenPos.x - centerX, 2) + 
+                            Math.pow(screenPos.y - centerY, 2)
+                        );
+                        
+                        if (distance < 50 && !point.captured) {
+                            dot.classList.add('active');
+                        } else {
+                            dot.classList.remove('active');
+                        }
                     } else {
-                        dot.classList.remove('active');
-                    }
-                    
-                    if (point.captured) {
-                        dot.classList.add('captured');
+                        dot.style.display = 'none';
                     }
                 } else {
-                    dot.style.display = 'none';
+                    // Manual mode - show all dots in grid
+                    const cols = 9;
+                    const rows = 6;
+                    
+                    if (index < cols * rows) {
+                        const col = index % cols;
+                        const row = Math.floor(index / cols);
+                        
+                        const x = (screenWidth / (cols + 1)) * (col + 1);
+                        const y = (screenHeight / (rows + 1)) * (row + 1);
+                        
+                        dot.style.left = `${x}px`;
+                        dot.style.top = `${y}px`;
+                        dot.style.display = 'block';
+                    } else {
+                        dot.style.display = 'none';
+                    }
+                }
+                
+                // Update captured state
+                if (point.captured) {
+                    dot.classList.add('captured');
+                } else {
+                    dot.classList.remove('captured');
                 }
             });
         }
