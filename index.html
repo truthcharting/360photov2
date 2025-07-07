@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="360° Camera">
     <meta name="theme-color" content="#000000">
     <title>360 Photosphere Capture</title>
     <style>
@@ -20,9 +21,16 @@
             color: #fff;
             overflow: hidden;
             height: 100vh;
-            height: 100dvh; /* Dynamic viewport height for mobile */
-            position: relative;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            height: 100dvh;
+            width: 100vw;
+            width: 100dvw;
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 0;
+            margin: 0;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         #cameraContainer {
@@ -81,13 +89,13 @@
         }
 
         #ui {
-            position: absolute;
-            bottom: env(safe-area-inset-bottom, 0px);
+            position: fixed;
+            bottom: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
             padding: 20px;
-            padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
             z-index: 20;
         }
 
@@ -147,14 +155,28 @@
         }
 
         #topUI {
-            position: absolute;
-            top: 20px;
+            position: fixed;
+            top: max(20px, env(safe-area-inset-top));
             left: 20px;
             right: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             z-index: 20;
+        }
+
+        #centerCrosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 15;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
         }
 
         #orientationInfo {
@@ -254,6 +276,7 @@
     <div id="cameraContainer" style="display: none;">
         <video id="cameraFeed" autoplay playsinline></video>
         <canvas id="arOverlay"></canvas>
+        <div id="centerCrosshair"></div>
         <div class="capture-flash" id="captureFlash"></div>
         
         <div id="topUI">
@@ -280,18 +303,29 @@
             constructor() {
                 this.isCapturing = false;
                 this.capturedPhotos = [];
-                this.totalTargets = 24; // 6 horizontal positions × 4 vertical levels
+                this.totalTargets = 24;
                 this.currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
                 this.initialOrientation = { alpha: 0, beta: 0, gamma: 0 };
                 this.targets = [];
                 this.autoCapture = true;
-                this.captureThreshold = 20; // degrees
+                this.captureThreshold = 20;
                 this.stream = null;
-                this.fov = 75; // Field of view in degrees
+                this.fov = 75;
                 this.orientationCalibrated = false;
                 
+                // Lock to portrait orientation
+                this.lockOrientation();
                 this.initializeTargets();
                 this.bindEvents();
+            }
+
+            lockOrientation() {
+                // Force portrait orientation
+                if (screen.orientation && screen.orientation.lock) {
+                    screen.orientation.lock('portrait').catch(err => {
+                        console.log('Could not lock orientation:', err);
+                    });
+                }
             }
 
             initializeTargets() {
@@ -428,7 +462,6 @@
             }
 
             startOrientationTracking() {
-                // Add debugging for orientation
                 console.log('Starting orientation tracking...');
                 
                 window.addEventListener('deviceorientation', (event) => {
@@ -446,10 +479,17 @@
                     }
                     
                     if (this.orientationCalibrated) {
-                        // Calculate relative orientation from initial position
+                        // For portrait mode, we need to adjust the coordinate system
+                        // alpha = compass heading (yaw) - around Z axis
+                        // beta = front-back tilt (pitch) - around X axis  
+                        // gamma = left-right tilt (roll) - around Y axis
+                        
                         this.currentOrientation = {
-                            alpha: this.normalizeAngle((event.alpha || 0) - this.initialOrientation.alpha),
+                            // Compass heading - invert for correct world movement
+                            alpha: this.normalizeAngle(-(event.alpha || 0) + this.initialOrientation.alpha),
+                            // Pitch (up/down) - keep as-is for portrait
                             beta: (event.beta || 0) - this.initialOrientation.beta,
+                            // Roll (tilt) - use for secondary camera movement
                             gamma: (event.gamma || 0) - this.initialOrientation.gamma
                         };
                         
