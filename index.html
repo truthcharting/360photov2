@@ -295,7 +295,7 @@
     <div id="startScreen">
         <h1>📸 360° Photosphere</h1>
         <p>Capture immersive 360° photos with AR-guided assistance</p>
-        <div id="version">Version #8</div>
+        <div id="version">Version #8.1</div>
         <button id="startBtn">Start Capture</button>
     </div>
 
@@ -336,6 +336,7 @@
                 this.stream = null;
                 this.fov = 75;
                 this.orientationCalibrated = false;
+                this.hasFileSystemAccess = false;
                 
                 // Lock to portrait orientation
                 this.lockOrientation();
@@ -437,12 +438,13 @@
 
             async startCapture() {
                 try {
-                    // First request orientation permission
+                    // First request all permissions upfront
                     const orientationGranted = await this.requestOrientationPermission();
                     if (!orientationGranted) {
                         return;
                     }
 
+                    // Request camera with additional permissions for better access
                     this.stream = await navigator.mediaDevices.getUserMedia({
                         video: { 
                             facingMode: 'environment',
@@ -460,6 +462,12 @@
                     this.isCapturing = true;
                     this.setupAROverlay();
                     this.startOrientationTracking();
+                    
+                    // Try to request file system access for direct saving (newer browsers)
+                    if ('showSaveFilePicker' in window) {
+                        this.hasFileSystemAccess = true;
+                        console.log('File System Access API available');
+                    }
                     
                 } catch (error) {
                     console.error('Error accessing camera:', error);
@@ -584,13 +592,13 @@
                 const cosA = Math.cos(-alphaRad);
                 const sinA = Math.sin(-alphaRad);
                 
-                // Rotation around X axis (beta - pitch)  
-                const cosB = Math.cos(-betaRad);
-                const sinB = Math.sin(-betaRad);
+                // Rotation around X axis (beta - pitch) - FIXED INVERSION
+                const cosB = Math.cos(betaRad);  // Removed negative sign
+                const sinB = Math.sin(betaRad);  // Removed negative sign
                 
-                // Rotation around Z axis (gamma - roll)
-                const cosG = Math.cos(-gammaRad);
-                const sinG = Math.sin(-gammaRad);
+                // Rotation around Z axis (gamma - roll) - FIXED INVERSION  
+                const cosG = Math.cos(gammaRad);  // Removed negative sign
+                const sinG = Math.sin(gammaRad);  // Removed negative sign
                 
                 // Apply rotation transformations in ZXY order
                 // First rotate by alpha around Y axis
@@ -937,10 +945,37 @@
                 `;
                 
                 // Event listeners
-                saveBtn.addEventListener('click', () => {
-                    onSave();
+                saveBtn.addEventListener('click', async () => {
                     document.body.removeChild(overlay);
-                    alert('Photosphere saved to your downloads!');
+                    
+                    try {
+                        // Try modern File System Access API first
+                        if (this.hasFileSystemAccess) {
+                            const response = await fetch(imageUrl);
+                            const blob = await response.blob();
+                            
+                            const fileHandle = await window.showSaveFilePicker({
+                                suggestedName: `photosphere_${this.capturedPhotos.length}photos_${Date.now()}.jpg`,
+                                types: [{
+                                    description: 'JPEG images',
+                                    accept: { 'image/jpeg': ['.jpg', '.jpeg'] }
+                                }]
+                            });
+                            
+                            const writable = await fileHandle.createWritable();
+                            await writable.write(blob);
+                            await writable.close();
+                            
+                            alert('Photosphere saved successfully!');
+                        } else {
+                            // Fallback to download
+                            onSave();
+                        }
+                    } catch (error) {
+                        console.log('File System API failed, using download:', error);
+                        // If user cancels or API fails, fall back to download
+                        onSave();
+                    }
                 });
                 
                 cancelBtn.addEventListener('click', () => {
