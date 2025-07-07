@@ -231,11 +231,19 @@
 
         #startScreen p {
             font-size: 18px;
-            margin-bottom: 50px;
+            margin-bottom: 20px;
             color: #1976d2;
             max-width: 320px;
             line-height: 1.4;
             font-weight: 400;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        #version {
+            font-size: 14px;
+            color: #64b5f6;
+            margin-bottom: 30px;
+            font-weight: 300;
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
         }
 
@@ -287,6 +295,7 @@
     <div id="startScreen">
         <h1>📸 360° Photosphere</h1>
         <p>Capture immersive 360° photos with AR-guided assistance</p>
+        <div id="version">Version #8</div>
         <button id="startBtn">Start Capture</button>
     </div>
 
@@ -549,76 +558,94 @@
             }
 
             project3DToScreen(targetAzimuth, targetElevation, centerX, centerY) {
-                // Portrait mode coordinate system with increased pan sensitivity
-                const phoneAzimuth = this.currentOrientation.alpha * 3.0;  // 3x sensitivity for pan
-                const phonePitch = this.currentOrientation.beta;            // Normal sensitivity for tilt
-                const phoneRoll = -this.currentOrientation.gamma;           // Inverted roll to fix direction
+                // Simplified AR projection inspired by A-Frame and WebXR approaches
+                // Convert device orientation to camera orientation matrix
                 
-                // Calculate target position relative to phone orientation
-                let relativeAzimuth = this.normalizeAngle(targetAzimuth - phoneAzimuth);
-                let relativeElevation = targetElevation - phonePitch;
+                // Get raw device angles in degrees
+                const deviceAlpha = this.currentOrientation.alpha || 0;  // Compass heading
+                const deviceBeta = this.currentOrientation.beta || 0;    // Front-back tilt  
+                const deviceGamma = this.currentOrientation.gamma || 0;  // Left-right roll
                 
-                // Convert to radians for 3D math
-                const azRad = relativeAzimuth * Math.PI / 180;
-                const elRad = relativeElevation * Math.PI / 180;
-                const rollRad = phoneRoll * Math.PI / 180;
+                // Convert target spherical coordinates to world 3D position
+                const targetAzRad = (targetAzimuth * Math.PI) / 180;
+                const targetElRad = (targetElevation * Math.PI) / 180;
                 
-                // 3D spherical coordinates on unit sphere
-                const x3d = Math.sin(azRad) * Math.cos(elRad);
-                const y3d = Math.sin(elRad);
-                const z3d = Math.cos(azRad) * Math.cos(elRad);
+                // World position of target on unit sphere
+                const worldX = Math.sin(targetAzRad) * Math.cos(targetElRad);
+                const worldY = Math.sin(targetElRad);
+                const worldZ = Math.cos(targetAzRad) * Math.cos(targetElRad);
                 
-                // Check if target is in front of camera (z > 0)
-                if (z3d <= 0.1) {
+                // Create rotation matrices for device orientation (ZXY rotation order)
+                const alphaRad = (deviceAlpha * Math.PI) / 180;
+                const betaRad = (deviceBeta * Math.PI) / 180;
+                const gammaRad = (deviceGamma * Math.PI) / 180;
+                
+                // Rotation around Y axis (alpha - compass heading)
+                const cosA = Math.cos(-alphaRad);
+                const sinA = Math.sin(-alphaRad);
+                
+                // Rotation around X axis (beta - pitch)  
+                const cosB = Math.cos(-betaRad);
+                const sinB = Math.sin(-betaRad);
+                
+                // Rotation around Z axis (gamma - roll)
+                const cosG = Math.cos(-gammaRad);
+                const sinG = Math.sin(-gammaRad);
+                
+                // Apply rotation transformations in ZXY order
+                // First rotate by alpha around Y axis
+                let rotX = worldX * cosA + worldZ * sinA;
+                let rotY = worldY;
+                let rotZ = -worldX * sinA + worldZ * cosA;
+                
+                // Then rotate by beta around X axis
+                const tempY = rotY * cosB - rotZ * sinB;
+                const tempZ = rotY * sinB + rotZ * cosB;
+                rotY = tempY;
+                rotZ = tempZ;
+                
+                // Finally rotate by gamma around Z axis
+                const finalX = rotX * cosG - rotY * sinG;
+                const finalY = rotX * sinG + rotY * cosG;
+                const finalZ = rotZ;
+                
+                // Check if point is in front of camera
+                if (finalZ <= 0.1) {
                     return { x: 0, y: 0, visible: false, distance: Infinity };
                 }
                 
-                // Perspective projection
-                const fovRad = this.fov * Math.PI / 180;
-                const focalLength = centerY / Math.tan(fovRad / 2);
+                // Simple perspective projection
+                const fov = (this.fov * Math.PI) / 180;
+                const scale = Math.min(centerX, centerY) / Math.tan(fov / 2);
                 
-                // Project to screen coordinates
-                let screenX = centerX + (x3d * focalLength / z3d);
-                let screenY = centerY - (y3d * focalLength / z3d);
+                const screenX = centerX + (finalX * scale) / finalZ;
+                const screenY = centerY - (finalY * scale) / finalZ;
                 
-                // Apply roll rotation to screen coordinates
-                const cosRoll = Math.cos(rollRad);
-                const sinRoll = Math.sin(rollRad);
+                // Calculate angular distance for proximity
+                const angularDistance = Math.acos(Math.max(0, Math.min(1, finalZ))) * 180 / Math.PI;
+                
+                // Add subtle lens distortion at edges
                 const deltaX = screenX - centerX;
                 const deltaY = screenY - centerY;
-                
-                screenX = centerX + (deltaX * cosRoll - deltaY * sinRoll);
-                screenY = centerY + (deltaX * sinRoll + deltaY * cosRoll);
-                
-                // Add lens distortion for realism at screen edges
                 const distFromCenter = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                 const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
                 const distRatio = distFromCenter / maxDist;
+                const distortion = 1 + 0.1 * distRatio * distRatio;
                 
-                // Barrel distortion coefficient (subtle lens warp)
-                const k = 0.15;
-                const distortion = 1 + k * distRatio * distRatio;
+                const finalScreenX = centerX + deltaX * distortion;
+                const finalScreenY = centerY + deltaY * distortion;
                 
-                const finalDeltaX = (screenX - centerX) * distortion;
-                const finalDeltaY = (screenY - centerY) * distortion;
-                
-                screenX = centerX + finalDeltaX;
-                screenY = centerY + finalDeltaY;
-                
-                // Calculate angular distance from center for proximity detection
-                const angularDistance = Math.acos(Math.max(0, Math.min(1, z3d))) * 180 / Math.PI;
-                
-                // Check if projected point is within screen bounds
+                // Check bounds
                 const margin = 100;
-                const visible = screenX > -margin && screenX < centerX * 2 + margin && 
-                               screenY > -margin && screenY < centerY * 2 + margin;
+                const visible = finalScreenX > -margin && finalScreenX < centerX * 2 + margin && 
+                               finalScreenY > -margin && finalScreenY < centerY * 2 + margin;
                 
                 return {
-                    x: screenX,
-                    y: screenY,
+                    x: finalScreenX,
+                    y: finalScreenY,
                     visible: visible,
                     distance: angularDistance,
-                    depth: z3d,
+                    depth: finalZ,
                     distortion: distortion
                 };
             }
