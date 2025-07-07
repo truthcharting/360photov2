@@ -295,7 +295,7 @@
     <div id="startScreen">
         <h1>📸 360° Photosphere</h1>
         <p>Capture immersive 360° photos with AR-guided assistance</p>
-        <div id="version">Version #8.1</div>
+        <div id="version">Version #9</div>
         <button id="startBtn">Start Capture</button>
     </div>
 
@@ -311,7 +311,7 @@
         </div>
 
         <div id="ui">
-            <div id="captureStatus">0 / 24 photos captured</div>
+            <div id="captureStatus">0 / 51 photos captured</div>
             <div id="progressBar">
                 <div id="progressFill"></div>
             </div>
@@ -327,7 +327,7 @@
             constructor() {
                 this.isCapturing = false;
                 this.capturedPhotos = [];
-                this.totalTargets = 24;
+                this.totalTargets = 51; // Increased from 24
                 this.currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
                 this.initialOrientation = { alpha: 0, beta: 0, gamma: 0 };
                 this.targets = [];
@@ -566,13 +566,12 @@
             }
 
             project3DToScreen(targetAzimuth, targetElevation, centerX, centerY) {
-                // Simplified AR projection inspired by A-Frame and WebXR approaches
-                // Convert device orientation to camera orientation matrix
+                // Improved AR projection with better sensitivity and horizon handling
                 
-                // Get raw device angles in degrees
-                const deviceAlpha = this.currentOrientation.alpha || 0;  // Compass heading
-                const deviceBeta = this.currentOrientation.beta || 0;    // Front-back tilt  
-                const deviceGamma = this.currentOrientation.gamma || 0;  // Left-right roll
+                // Get raw device angles with increased sensitivity
+                const deviceAlpha = (this.currentOrientation.alpha || 0) * 2.5;  // 2.5x sensitivity for pan
+                const deviceBeta = (this.currentOrientation.beta || 0) * 2.0;    // 2x sensitivity for tilt  
+                const deviceGamma = (this.currentOrientation.gamma || 0) * 1.5;  // 1.5x sensitivity for roll
                 
                 // Convert target spherical coordinates to world 3D position
                 const targetAzRad = (targetAzimuth * Math.PI) / 180;
@@ -583,30 +582,33 @@
                 const worldY = Math.sin(targetElRad);
                 const worldZ = Math.cos(targetAzRad) * Math.cos(targetElRad);
                 
-                // Create rotation matrices for device orientation (ZXY rotation order)
+                // Create rotation matrices with improved horizon handling
                 const alphaRad = (deviceAlpha * Math.PI) / 180;
                 const betaRad = (deviceBeta * Math.PI) / 180;
                 const gammaRad = (deviceGamma * Math.PI) / 180;
+                
+                // Clamp beta to prevent gimbal lock issues near poles
+                const clampedBetaRad = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, betaRad));
                 
                 // Rotation around Y axis (alpha - compass heading)
                 const cosA = Math.cos(-alphaRad);
                 const sinA = Math.sin(-alphaRad);
                 
-                // Rotation around X axis (beta - pitch) - FIXED INVERSION
-                const cosB = Math.cos(betaRad);  // Removed negative sign
-                const sinB = Math.sin(betaRad);  // Removed negative sign
+                // Rotation around X axis (beta - pitch) with clamping
+                const cosB = Math.cos(clampedBetaRad);
+                const sinB = Math.sin(clampedBetaRad);
                 
-                // Rotation around Z axis (gamma - roll) - FIXED INVERSION  
-                const cosG = Math.cos(gammaRad);  // Removed negative sign
-                const sinG = Math.sin(gammaRad);  // Removed negative sign
+                // Rotation around Z axis (gamma - roll)
+                const cosG = Math.cos(gammaRad);
+                const sinG = Math.sin(gammaRad);
                 
-                // Apply rotation transformations in ZXY order
+                // Apply rotation transformations in YXZ order (better for horizon crossing)
                 // First rotate by alpha around Y axis
                 let rotX = worldX * cosA + worldZ * sinA;
                 let rotY = worldY;
                 let rotZ = -worldX * sinA + worldZ * cosA;
                 
-                // Then rotate by beta around X axis
+                // Then rotate by beta around X axis (with improved handling)
                 const tempY = rotY * cosB - rotZ * sinB;
                 const tempZ = rotY * sinB + rotZ * cosB;
                 rotY = tempY;
@@ -617,43 +619,46 @@
                 const finalY = rotX * sinG + rotY * cosG;
                 const finalZ = rotZ;
                 
-                // Check if point is in front of camera
-                if (finalZ <= 0.1) {
+                // Improved visibility check - more forgiving near horizon
+                if (finalZ <= -0.2) {  // Allow some points slightly behind camera
                     return { x: 0, y: 0, visible: false, distance: Infinity };
                 }
                 
-                // Simple perspective projection
+                // Enhanced perspective projection
                 const fov = (this.fov * Math.PI) / 180;
                 const scale = Math.min(centerX, centerY) / Math.tan(fov / 2);
                 
-                const screenX = centerX + (finalX * scale) / finalZ;
-                const screenY = centerY - (finalY * scale) / finalZ;
+                // Handle points near or behind camera more gracefully
+                const projectionZ = Math.max(0.1, finalZ);
+                const screenX = centerX + (finalX * scale) / projectionZ;
+                const screenY = centerY - (finalY * scale) / projectionZ;
                 
                 // Calculate angular distance for proximity
-                const angularDistance = Math.acos(Math.max(0, Math.min(1, finalZ))) * 180 / Math.PI;
+                const angularDistance = Math.acos(Math.max(0, Math.min(1, Math.abs(finalZ)))) * 180 / Math.PI;
                 
-                // Add subtle lens distortion at edges
+                // Subtle lens distortion
                 const deltaX = screenX - centerX;
                 const deltaY = screenY - centerY;
                 const distFromCenter = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                 const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
-                const distRatio = distFromCenter / maxDist;
-                const distortion = 1 + 0.1 * distRatio * distRatio;
+                const distRatio = Math.min(1, distFromCenter / maxDist);
+                const distortion = 1 + 0.08 * distRatio * distRatio;
                 
                 const finalScreenX = centerX + deltaX * distortion;
                 const finalScreenY = centerY + deltaY * distortion;
                 
-                // Check bounds
-                const margin = 100;
+                // More generous bounds checking
+                const margin = 150;
                 const visible = finalScreenX > -margin && finalScreenX < centerX * 2 + margin && 
-                               finalScreenY > -margin && finalScreenY < centerY * 2 + margin;
+                               finalScreenY > -margin && finalScreenY < centerY * 2 + margin &&
+                               finalZ > -0.2;  // Allow slightly behind camera
                 
                 return {
                     x: finalScreenX,
                     y: finalScreenY,
                     visible: visible,
                     distance: angularDistance,
-                    depth: finalZ,
+                    depth: Math.abs(finalZ),
                     distortion: distortion
                 };
             }
