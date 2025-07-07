@@ -198,49 +198,62 @@
         }
 
         #startScreen {
-            position: absolute;
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100dvh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 30%, #90caf9 70%, #42a5f5 100%);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             text-align: center;
             z-index: 100;
+            padding: 0;
+            margin: 0;
         }
 
         #startScreen h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
-            font-weight: 600;
+            font-size: 32px;
+            margin-bottom: 12px;
+            font-weight: 300;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            color: #1565c0;
+            letter-spacing: -0.5px;
         }
 
         #startScreen p {
-            font-size: 16px;
-            margin-bottom: 40px;
-            opacity: 0.9;
-            max-width: 300px;
+            font-size: 18px;
+            margin-bottom: 50px;
+            color: #1976d2;
+            max-width: 320px;
+            line-height: 1.4;
+            font-weight: 400;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
         }
 
         #startBtn {
-            background: rgba(255, 255, 255, 0.9);
-            color: #333;
+            background: linear-gradient(135deg, #42a5f5, #1e88e5);
+            color: white;
             border: none;
-            border-radius: 30px;
-            padding: 15px 30px;
+            border-radius: 25px;
+            padding: 16px 32px;
             font-size: 18px;
-            font-weight: 600;
+            font-weight: 500;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
             cursor: pointer;
             transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(66, 165, 245, 0.3);
+            letter-spacing: 0.5px;
         }
 
         #startBtn:hover {
-            background: white;
+            background: linear-gradient(135deg, #1e88e5, #1565c0);
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 8px 25px rgba(66, 165, 245, 0.4);
         }
 
         .capture-flash {
@@ -534,19 +547,21 @@
             }
 
             project3DToScreen(targetAzimuth, targetElevation, centerX, centerY) {
-                // Fix inverted movement: when phone turns right, world appears to move left
-                const phoneAzimuth = -this.currentOrientation.alpha; // Invert horizontal
-                const phoneElevation = this.currentOrientation.beta;  // Keep vertical as-is
+                // Portrait mode coordinate system - fix the roll/pan confusion
+                const phoneAzimuth = this.currentOrientation.alpha;  // Yaw (compass/pan) - left/right rotation
+                const phonePitch = this.currentOrientation.beta;     // Pitch (up/down tilt)
+                const phoneRoll = this.currentOrientation.gamma;     // Roll (camera rotation around viewing axis)
                 
-                // Calculate relative position of target in phone's coordinate system
-                const relativeAzimuth = this.normalizeAngle(targetAzimuth - phoneAzimuth);
-                const relativeElevation = targetElevation - phoneElevation;
+                // Calculate target position relative to phone orientation
+                let relativeAzimuth = this.normalizeAngle(targetAzimuth - phoneAzimuth);
+                let relativeElevation = targetElevation - phonePitch;
                 
-                // Convert to radians
+                // Convert to radians for 3D math
                 const azRad = relativeAzimuth * Math.PI / 180;
                 const elRad = relativeElevation * Math.PI / 180;
+                const rollRad = phoneRoll * Math.PI / 180;
                 
-                // 3D spherical coordinates (unit sphere)
+                // 3D spherical coordinates on unit sphere
                 const x3d = Math.sin(azRad) * Math.cos(elRad);
                 const y3d = Math.sin(elRad);
                 const z3d = Math.cos(azRad) * Math.cos(elRad);
@@ -556,13 +571,23 @@
                     return { x: 0, y: 0, visible: false, distance: Infinity };
                 }
                 
-                // Perspective projection with realistic FOV
+                // Perspective projection
                 const fovRad = this.fov * Math.PI / 180;
                 const focalLength = centerY / Math.tan(fovRad / 2);
                 
-                // Project to screen with perspective divide
-                const screenX = centerX + (x3d * focalLength / z3d);
-                const screenY = centerY - (y3d * focalLength / z3d);
+                // Project to screen coordinates
+                let screenX = centerX + (x3d * focalLength / z3d);
+                let screenY = centerY - (y3d * focalLength / z3d);
+                
+                // Apply roll rotation ONLY to screen coordinates (not world position)
+                // This rotates the view around the center point when phone rolls
+                const cosRoll = Math.cos(rollRad);
+                const sinRoll = Math.sin(rollRad);
+                const deltaX = screenX - centerX;
+                const deltaY = screenY - centerY;
+                
+                screenX = centerX + (deltaX * cosRoll - deltaY * sinRoll);
+                screenY = centerY + (deltaX * sinRoll + deltaY * cosRoll);
                 
                 // Calculate angular distance from center for proximity detection
                 const angularDistance = Math.acos(Math.max(0, Math.min(1, z3d))) * 180 / Math.PI;
