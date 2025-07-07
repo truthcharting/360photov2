@@ -828,4 +828,282 @@
         async function finishCapture() {
             if (capturedImages.length < 10) {
                 alert('Please capture at least 10 images for a basic photosphere.');
+                return;
+            }
+            
+            showLoading('Stitching photosphere...');
+            
+            try {
+                // Stop camera stream
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                }
                 
+                // Stop orientation monitoring
+                window.removeEventListener('deviceorientation', handleOrientation);
+                
+                // Simulate stitching process (in real implementation, this would use OpenCV.js or similar)
+                await simulateStitching();
+                
+                // Create and display photosphere
+                await createPhotosphere();
+                
+                hideLoading();
+                showViewer();
+                
+            } catch (error) {
+                console.error('Stitching failed:', error);
+                hideLoading();
+                alert('Failed to create photosphere. Please try again.');
+            }
+        }
+
+        // Simulate stitching process
+        async function simulateStitching() {
+            // Simulate processing time
+            for (let i = 0; i < 100; i += 10) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                document.getElementById('loadingText').textContent = `Stitching progress: ${i}%`;
+            }
+            
+            // In a real implementation, this would:
+            // 1. Use feature detection (SIFT/ORB) to find matching points between images
+            // 2. Calculate homography matrices for image alignment
+            // 3. Perform cylindrical or spherical projection
+            // 4. Blend images using multi-band blending
+            // 5. Generate equirectangular output
+            
+            console.log('Stitching simulation complete');
+        }
+
+        // Create photosphere from captured images
+        async function createPhotosphere() {
+            // For demo purposes, create a simple equirectangular panorama
+            // In production, this would use a proper stitching algorithm
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Standard equirectangular dimensions (2:1 ratio)
+            canvas.width = 2048;
+            canvas.height = 1024;
+            
+            // Create a gradient background as placeholder
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#87CEEB'); // Sky blue
+            gradient.addColorStop(0.7, '#98FB98'); // Pale green
+            gradient.addColorStop(1, '#228B22'); // Forest green
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Place captured images in approximate positions
+            // This is a simplified version - real stitching would be much more complex
+            for (let i = 0; i < Math.min(capturedImages.length, 12); i++) {
+                const img = new Image();
+                img.src = capturedImages[i].data;
+                
+                await new Promise(resolve => {
+                    img.onload = () => {
+                        const x = (i % 6) * (canvas.width / 6);
+                        const y = Math.floor(i / 6) * (canvas.height / 2);
+                        const w = canvas.width / 6;
+                        const h = canvas.height / 2;
+                        
+                        ctx.globalAlpha = 0.8;
+                        ctx.drawImage(img, x, y, w, h);
+                        ctx.globalAlpha = 1.0;
+                        resolve();
+                    };
+                });
+            }
+            
+            // Convert to data URL for Photo Sphere Viewer
+            window.stitchedPhotosphere = canvas.toDataURL('image/jpeg', 0.9);
+        }
+
+        // Show photosphere viewer
+        function showViewer() {
+            document.getElementById('captureInterface').style.display = 'none';
+            document.getElementById('viewerInterface').style.display = 'block';
+            
+            // Initialize Photo Sphere Viewer
+            if (window.stitchedPhotosphere) {
+                initializePhotosphereViewer();
+            }
+        }
+
+        // Initialize Photo Sphere Viewer
+        function initializePhotosphereViewer() {
+            const viewerContainer = document.getElementById('photosphereViewer');
+            viewerContainer.innerHTML = ''; // Clear any existing content
+            
+            try {
+                // Create a simple 360° viewer using Three.js and Panolens
+                const viewer = new PANOLENS.Viewer({
+                    container: viewerContainer,
+                    autoRotate: true,
+                    autoRotateSpeed: 0.5,
+                    controlBar: true
+                });
+                
+                const panorama = new PANOLENS.ImagePanorama(window.stitchedPhotosphere);
+                viewer.add(panorama);
+                
+                photosphereViewer = viewer;
+                
+            } catch (error) {
+                console.error('Viewer initialization failed:', error);
+                
+                // Fallback: simple image display
+                const img = document.createElement('img');
+                img.src = window.stitchedPhotosphere;
+                img.style.cssText = 'width: 100%; height: 100%; object-fit: contain;';
+                viewerContainer.appendChild(img);
+            }
+        }
+
+        // Download photosphere
+        function downloadPhotosphere() {
+            if (!window.stitchedPhotosphere) {
+                alert('No photosphere available for download.');
+                return;
+            }
+            
+            const link = document.createElement('a');
+            link.download = `photosphere_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.jpg`;
+            link.href = window.stitchedPhotosphere;
+            link.click();
+        }
+
+        // Back to capture
+        function backToCapture() {
+            document.getElementById('viewerInterface').style.display = 'none';
+            document.getElementById('frontPage').style.display = 'block';
+            
+            // Reset state
+            capturedImages = [];
+            capturePoints = [];
+            currentTargetIndex = 0;
+            window.stitchedPhotosphere = null;
+            
+            if (photosphereViewer) {
+                photosphereViewer.dispose();
+                photosphereViewer = null;
+            }
+        }
+
+        // Cancel capture
+        function cancelCapture() {
+            if (confirm('Are you sure you want to cancel? All captured images will be lost.')) {
+                // Stop camera stream
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                }
+                
+                // Stop orientation monitoring
+                window.removeEventListener('deviceorientation', handleOrientation);
+                
+                // Reset and go back
+                backToCapture();
+            }
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (arContext) {
+                const canvas = arContext.canvas;
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        });
+
+        // Handle orientation change
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                if (arContext) {
+                    const canvas = arContext.canvas;
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                }
+            }, 100);
+        });
+
+        // Register service worker for PWA functionality
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // Create service worker inline
+                const swCode = `
+                    const CACHE_NAME = 'photosphere-v1.0.0';
+                    const urlsToCache = [
+                        './',
+                        'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+                        'https://cdnjs.cloudflare.com/ajax/libs/panolens/0.12.1/panolens.min.js'
+                    ];
+
+                    self.addEventListener('install', event => {
+                        event.waitUntil(
+                            caches.open(CACHE_NAME)
+                                .then(cache => cache.addAll(urlsToCache))
+                        );
+                    });
+
+                    self.addEventListener('fetch', event => {
+                        event.respondWith(
+                            caches.match(event.request)
+                                .then(response => {
+                                    if (response) {
+                                        return response;
+                                    }
+                                    return fetch(event.request);
+                                })
+                        );
+                    });
+                `;
+                
+                const blob = new Blob([swCode], { type: 'application/javascript' });
+                const swUrl = URL.createObjectURL(blob);
+                
+                navigator.serviceWorker.register(swUrl)
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(error => {
+                        console.log('ServiceWorker registration failed: ', error);
+                    });
+            });
+        }
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('PhotoSphere Capture Pro v1.0.0 initialized');
+            
+            // Check for required APIs
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Camera API not supported on this device.');
+                return;
+            }
+            
+            if (!window.DeviceOrientationEvent) {
+                console.warn('Device orientation not supported - AR features limited');
+            }
+        });
+
+        // Prevent context menu on long press (mobile)
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        
+        // Prevent zoom on double tap (mobile)
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', event => {
+            const now = new Date().getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+
+    </script>
+</body>
+</html>
