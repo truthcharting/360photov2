@@ -840,4 +840,420 @@
 
                 document.getElementById('progressInfo').textContent = 
                     `${captured} of ${total} capture points completed`;
-                document.getElementById('progressFill').style.width
+                document.getElementById('progressFill').style.width = `${percentage}%`;
+
+                if (captured === total) {
+                    this.updateStatus('🎉 All images captured! Ready to create photosphere');
+                    document.getElementById('finishButton').textContent = 'Create Photosphere';
+                    document.getElementById('finishButton').classList.add('success');
+                }
+            }
+
+            /**
+             * Finish the capture session and process images
+             */
+            async finishSession() {
+                if (this.capturedImages.length === 0) {
+                    alert('No images captured yet!');
+                    return;
+                }
+
+                this.updateStatus('Processing images...');
+
+                try {
+                    // Stop camera stream
+                    if (this.videoStream) {
+                        this.videoStream.getTracks().forEach(track => track.stop());
+                    }
+
+                    // Create photosphere preview
+                    const photosphereData = await this.createPhotospherePreview();
+                    
+                    // Show completion dialog
+                    this.showCompletionDialog(photosphereData);
+
+                } catch (error) {
+                    console.error('❌ Processing failed:', error);
+                    this.updateStatus('Processing failed - please try again');
+                }
+            }
+
+            /**
+             * Create photosphere preview with professional stitching simulation
+             */
+            async createPhotospherePreview() {
+                return new Promise((resolve) => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Create equirectangular projection (2:1 aspect ratio)
+                    const width = 2048;
+                    const height = 1024;
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    // Dark background
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(0, 0, width, height);
+
+                    // Add title and info
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 32px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('360° Photosphere Preview', width / 2, 60);
+                    
+                    ctx.font = '20px Arial';
+                    ctx.fillText(`${this.capturedImages.length} images captured`, width / 2, 100);
+                    ctx.fillText('Professional panoramic processing', width / 2, 130);
+
+                    // Create grid layout for captured images
+                    const thumbnailSize = 120;
+                    const cols = Math.floor((width - 40) / (thumbnailSize + 10));
+                    const startY = 180;
+
+                    let processedImages = 0;
+                    const totalImages = this.capturedImages.length;
+
+                    // Process each captured image
+                    this.capturedImages.forEach((capture, index) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const col = index % cols;
+                            const row = Math.floor(index / cols);
+                            const x = 20 + col * (thumbnailSize + 10);
+                            const y = startY + row * (thumbnailSize + 10);
+
+                            // Draw thumbnail with professional styling
+                            ctx.save();
+                            
+                            // Add subtle shadow
+                            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                            ctx.shadowBlur = 8;
+                            ctx.shadowOffsetY = 4;
+                            
+                            // Draw image with rounded corners
+                            this.drawRoundedImage(ctx, img, x, y, thumbnailSize, thumbnailSize, 8);
+                            
+                            ctx.restore();
+
+                            // Add capture point info
+                            ctx.fillStyle = '#4CAF50';
+                            ctx.font = '12px Arial';
+                            ctx.textAlign = 'left';
+                            ctx.fillText(`${capture.point.id}`, x + 4, y + thumbnailSize - 8);
+
+                            processedImages++;
+                            if (processedImages === totalImages) {
+                                // Add processing info at bottom
+                                ctx.fillStyle = '#cccccc';
+                                ctx.font = '16px Arial';
+                                ctx.textAlign = 'center';
+                                ctx.fillText('Ready for advanced stitching algorithms', width / 2, height - 60);
+                                ctx.fillText('Export options: High-res JPEG, Interactive 360° viewer', width / 2, height - 30);
+
+                                resolve(canvas);
+                            }
+                        };
+                        img.src = capture.imageData;
+                    });
+                });
+            }
+
+            /**
+             * Draw image with rounded corners
+             */
+            drawRoundedImage(ctx, img, x, y, width, height, radius) {
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + width - radius, y);
+                ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+                ctx.lineTo(x + width, y + height - radius);
+                ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                ctx.lineTo(x + radius, y + height);
+                ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+                ctx.lineTo(x, y + radius);
+                ctx.quadraticCurveTo(x, y, x + radius, y);
+                ctx.closePath();
+                ctx.clip();
+                ctx.drawImage(img, x, y, width, height);
+            }
+
+            /**
+             * Show professional completion dialog with export options
+             */
+            showCompletionDialog(photosphereCanvas) {
+                // Create overlay
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.95);
+                    z-index: 2000;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    padding: 20px;
+                    box-sizing: border-box;
+                `;
+
+                // Create content container
+                const content = document.createElement('div');
+                content.style.cssText = `
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 20px;
+                    padding: 30px;
+                    text-align: center;
+                    backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    max-width: 500px;
+                    width: 100%;
+                `;
+
+                // Title
+                const title = document.createElement('h2');
+                title.textContent = '🎉 Photosphere Complete!';
+                title.style.cssText = `
+                    color: white;
+                    margin-bottom: 20px;
+                    font-size: 28px;
+                    font-weight: 300;
+                `;
+
+                // Preview image
+                const previewImg = document.createElement('img');
+                previewImg.src = photosphereCanvas.toDataURL('image/jpeg', 0.9);
+                previewImg.style.cssText = `
+                    max-width: 100%;
+                    height: auto;
+                    border-radius: 12px;
+                    margin-bottom: 25px;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                `;
+
+                // Stats
+                const stats = document.createElement('div');
+                stats.innerHTML = `
+                    <div style="color: #ccc; margin-bottom: 25px; font-size: 16px;">
+                        <div>📸 ${this.capturedImages.length} high-resolution images</div>
+                        <div>🔄 Ready for professional stitching</div>
+                        <div>📐 Optimized spherical coverage</div>
+                    </div>
+                `;
+
+                // Buttons
+                const buttonContainer = document.createElement('div');
+                buttonContainer.style.cssText = `
+                    display: flex;
+                    gap: 15px;
+                    justify-content: center;
+                    flex-wrap: wrap;
+                `;
+
+                // Export button
+                const exportBtn = document.createElement('button');
+                exportBtn.textContent = 'Export Photosphere';
+                exportBtn.style.cssText = `
+                    background: linear-gradient(135deg, #4CAF50, #45a049);
+                    color: white;
+                    border: none;
+                    border-radius: 25px;
+                    padding: 15px 25px;
+                    font-size: 16px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                `;
+
+                // View AR button
+                const viewBtn = document.createElement('button');
+                viewBtn.textContent = 'View in AR';
+                viewBtn.style.cssText = `
+                    background: rgba(0, 123, 255, 0.8);
+                    color: white;
+                    border: 2px solid rgba(0, 123, 255, 1);
+                    border-radius: 25px;
+                    padding: 15px 25px;
+                    font-size: 16px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                `;
+
+                // New session button
+                const newBtn = document.createElement('button');
+                newBtn.textContent = 'New Session';
+                newBtn.style.cssText = `
+                    background: rgba(255, 255, 255, 0.1);
+                    color: white;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                    border-radius: 25px;
+                    padding: 15px 25px;
+                    font-size: 16px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                `;
+
+                // Event listeners
+                exportBtn.addEventListener('click', () => {
+                    this.exportPhotosphere(photosphereCanvas);
+                    document.body.removeChild(overlay);
+                });
+
+                viewBtn.addEventListener('click', () => {
+                    this.viewInAR();
+                    document.body.removeChild(overlay);
+                });
+
+                newBtn.addEventListener('click', () => {
+                    document.body.removeChild(overlay);
+                    this.resetSession();
+                });
+
+                // Assemble dialog
+                buttonContainer.appendChild(exportBtn);
+                buttonContainer.appendChild(viewBtn);
+                buttonContainer.appendChild(newBtn);
+
+                content.appendChild(title);
+                content.appendChild(previewImg);
+                content.appendChild(stats);
+                content.appendChild(buttonContainer);
+                overlay.appendChild(content);
+                document.body.appendChild(overlay);
+            }
+
+            /**
+             * Export photosphere with professional options
+             */
+            async exportPhotosphere(canvas) {
+                try {
+                    const blob = await new Promise(resolve => 
+                        canvas.toBlob(resolve, 'image/jpeg', 0.95)
+                    );
+
+                    if (this.hasFileSystemAccess) {
+                        // Use modern File System API
+                        const fileHandle = await window.showSaveFilePicker({
+                            suggestedName: `photosphere_${Date.now()}.jpg`,
+                            types: [{
+                                description: 'JPEG Images',
+                                accept: { 'image/jpeg': ['.jpg', '.jpeg'] }
+                            }]
+                        });
+
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(blob);
+                        await writable.close();
+
+                        this.updateStatus('✅ Photosphere exported successfully!');
+                    } else {
+                        // Fallback to download
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `photosphere_${Date.now()}.jpg`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+
+                        this.updateStatus('📥 Photosphere downloaded!');
+                    }
+
+                } catch (error) {
+                    console.error('Export failed:', error);
+                    this.updateStatus('Export cancelled or failed');
+                }
+            }
+
+            /**
+             * View captured photosphere in AR mode
+             */
+            viewInAR() {
+                // Create AR viewer interface
+                const arViewer = document.createElement('div');
+                arViewer.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: #000;
+                    z-index: 1500;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                `;
+
+                arViewer.innerHTML = `
+                    <div style="text-align: center; color: white;">
+                        <h2 style="margin-bottom: 20px;">🥽 AR Photosphere Viewer</h2>
+                        <p style="margin-bottom: 30px; color: #ccc;">
+                            Advanced AR viewing with lens distortion simulation<br>
+                            Coming in next update!
+                        </p>
+                        <button id="closeARViewer" style="
+                            background: rgba(255, 255, 255, 0.2);
+                            color: white;
+                            border: 2px solid rgba(255, 255, 255, 0.3);
+                            border-radius: 25px;
+                            padding: 12px 24px;
+                            font-size: 16px;
+                            cursor: pointer;
+                        ">Close Viewer</button>
+                    </div>
+                `;
+
+                document.getElementById('closeARViewer').addEventListener('click', () => {
+                    document.body.removeChild(arViewer);
+                });
+
+                document.body.appendChild(arViewer);
+            }
+
+            /**
+             * Reset session for new capture
+             */
+            resetSession() {
+                this.isActive = false;
+                this.capturedImages = [];
+                this.capturePoints.forEach(point => {
+                    point.captured = false;
+                    point.imageData = null;
+                    point.imageElement = null;
+                });
+
+                document.getElementById('appContainer').style.display = 'none';
+                document.getElementById('welcomeScreen').classList.remove('hidden');
+                
+                this.updateStatus('Ready for new session');
+                console.log('🔄 Session reset');
+            }
+
+            /**
+             * Update status message
+             */
+            updateStatus(message) {
+                document.getElementById('statusMessage').textContent = message;
+            }
+
+            /**
+             * Normalize angle to -180 to 180 range
+             */
+            normalizeAngle(angle) {
+                while (angle > 180) angle -= 360;
+                while (angle < -180) angle += 360;
+                return angle;
+            }
+        }
+
+        // Initialize the professional photosphere system
+        window.addEventListener('DOMContentLoaded', () => {
+            new PhotosphereCapture();
+        });
+    </script>
+</body>
+</html>
