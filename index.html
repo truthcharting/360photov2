@@ -276,36 +276,71 @@
                 this.capturedPhotos = [];
                 this.totalTargets = 24; // 6 horizontal positions × 4 vertical levels
                 this.currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
+                this.initialOrientation = { alpha: 0, beta: 0, gamma: 0 };
                 this.targets = [];
                 this.autoCapture = true;
-                this.captureThreshold = 15; // degrees
+                this.captureThreshold = 20; // degrees
                 this.stream = null;
+                this.fov = 75; // Field of view in degrees
+                this.orientationCalibrated = false;
                 
                 this.initializeTargets();
                 this.bindEvents();
             }
 
             initializeTargets() {
-                // Create target positions for a spherical grid
-                const horizontalSteps = 6; // 60° apart
-                const verticalSteps = 4; // 45° apart
+                // Create target positions for a proper spherical distribution
+                this.targets = [];
                 
-                for (let v = 0; v < verticalSteps; v++) {
-                    for (let h = 0; h < horizontalSteps; h++) {
-                        const azimuth = (h * 60) % 360; // 0, 60, 120, 180, 240, 300
-                        const elevation = -45 + (v * 30); // -45, -15, 15, 45
-                        
-                        this.targets.push({
-                            id: `target_${v}_${h}`,
-                            azimuth: azimuth,
-                            elevation: elevation,
-                            captured: false,
-                            screenX: 0,
-                            screenY: 0,
-                            visible: true
-                        });
-                    }
+                // Ring 1: Horizon level (elevation 0°)
+                for (let i = 0; i < 8; i++) {
+                    const azimuth = i * 45; // Every 45 degrees
+                    this.targets.push({
+                        id: `horizon_${i}`,
+                        azimuth: azimuth,
+                        elevation: 0,
+                        captured: false
+                    });
                 }
+                
+                // Ring 2: Upper level (elevation 30°)
+                for (let i = 0; i < 6; i++) {
+                    const azimuth = i * 60; // Every 60 degrees
+                    this.targets.push({
+                        id: `upper_${i}`,
+                        azimuth: azimuth,
+                        elevation: 30,
+                        captured: false
+                    });
+                }
+                
+                // Ring 3: Lower level (elevation -30°)
+                for (let i = 0; i < 6; i++) {
+                    const azimuth = i * 60; // Every 60 degrees
+                    this.targets.push({
+                        id: `lower_${i}`,
+                        azimuth: azimuth,
+                        elevation: -30,
+                        captured: false
+                    });
+                }
+                
+                // Zenith and Nadir
+                this.targets.push({
+                    id: 'zenith',
+                    azimuth: 0,
+                    elevation: 60,
+                    captured: false
+                });
+                
+                this.targets.push({
+                    id: 'nadir',
+                    azimuth: 0,
+                    elevation: -60,
+                    captured: false
+                });
+                
+                this.totalTargets = this.targets.length;
             }
 
             async bindEvents() {
@@ -393,27 +428,45 @@
                 window.addEventListener('deviceorientation', (event) => {
                     if (!this.isCapturing) return;
                     
-                    console.log('Orientation event:', event.alpha, event.beta, event.gamma);
+                    // Calibrate initial orientation on first reading
+                    if (!this.orientationCalibrated && event.alpha !== null) {
+                        this.initialOrientation = {
+                            alpha: event.alpha || 0,
+                            beta: event.beta || 0,
+                            gamma: event.gamma || 0
+                        };
+                        this.orientationCalibrated = true;
+                        console.log('Orientation calibrated:', this.initialOrientation);
+                    }
                     
-                    this.currentOrientation = {
-                        alpha: event.alpha || 0, // compass heading
-                        beta: event.beta || 0,   // front-to-back tilt
-                        gamma: event.gamma || 0  // left-to-right tilt
-                    };
-                    
-                    this.updateARDots();
-                    this.checkAutoCapture();
-                    this.updateOrientationInfo();
+                    if (this.orientationCalibrated) {
+                        // Calculate relative orientation from initial position
+                        this.currentOrientation = {
+                            alpha: this.normalizeAngle((event.alpha || 0) - this.initialOrientation.alpha),
+                            beta: (event.beta || 0) - this.initialOrientation.beta,
+                            gamma: (event.gamma || 0) - this.initialOrientation.gamma
+                        };
+                        
+                        this.updateARDots();
+                        this.checkAutoCapture();
+                        this.updateOrientationInfo();
+                    }
                 });
 
                 // Fallback: if no orientation data after 3 seconds, show manual mode
                 setTimeout(() => {
-                    if (this.currentOrientation.alpha === 0 && this.currentOrientation.beta === 0) {
+                    if (!this.orientationCalibrated) {
                         console.log('No orientation data detected, enabling manual mode');
                         document.getElementById('orientationInfo').textContent = 'Manual mode - use capture button';
                         this.autoCapture = false;
                     }
                 }, 3000);
+            }
+
+            normalizeAngle(angle) {
+                while (angle > 180) angle -= 360;
+                while (angle < -180) angle += 360;
+                return angle;
             }
 
             updateARDots() {
@@ -422,21 +475,54 @@
                 const centerY = canvas.height / 2;
                 
                 this.targets.forEach(target => {
-                    // Calculate screen position based on orientation
-                    const azimuthDiff = target.azimuth - this.currentOrientation.alpha;
-                    const elevationDiff = target.elevation - this.currentOrientation.beta;
+                    // Calculate 3D position relative to current phone orientation
+                    const result = this.project3DToScreen(target.azimuth, target.elevation, centerX, centerY);
                     
-                    // Project to screen coordinates (simplified)
-                    const screenX = centerX + (azimuthDiff * 3);
-                    const screenY = centerY + (elevationDiff * 4);
-                    
-                    target.screenX = screenX;
-                    target.screenY = screenY;
-                    target.visible = screenX > -50 && screenX < canvas.width + 50 && 
-                                   screenY > -50 && screenY < canvas.height + 50;
+                    target.screenX = result.x;
+                    target.screenY = result.y;
+                    target.visible = result.visible;
+                    target.distance = result.distance;
                 });
                 
                 this.renderARDots();
+            }
+
+            project3DToScreen(targetAzimuth, targetElevation, centerX, centerY) {
+                // Convert angles to radians
+                const currentAzimuth = this.currentOrientation.alpha * Math.PI / 180;
+                const currentElevation = -this.currentOrientation.beta * Math.PI / 180; // Inverted for phone orientation
+                const targetAz = targetAzimuth * Math.PI / 180;
+                const targetEl = targetElevation * Math.PI / 180;
+                
+                // Calculate relative angles
+                const deltaAzimuth = this.normalizeAngle(targetAzimuth - this.currentOrientation.alpha) * Math.PI / 180;
+                const deltaElevation = (targetElevation + this.currentOrientation.beta) * Math.PI / 180;
+                
+                // 3D spherical to screen projection with perspective
+                const fovRad = this.fov * Math.PI / 180;
+                const scale = Math.min(centerX, centerY) / Math.tan(fovRad / 2);
+                
+                // Check if target is in front of camera (within FOV)
+                const dotProduct = Math.cos(deltaElevation) * Math.cos(deltaAzimuth);
+                const isVisible = dotProduct > Math.cos(fovRad / 2);
+                
+                if (!isVisible) {
+                    return { x: 0, y: 0, visible: false, distance: Infinity };
+                }
+                
+                // Project to screen coordinates with proper perspective
+                const x = centerX + (Math.sin(deltaAzimuth) * Math.cos(deltaElevation) * scale);
+                const y = centerY - (Math.sin(deltaElevation) * scale);
+                
+                // Calculate angular distance for proximity detection
+                const angularDistance = Math.acos(Math.max(-1, Math.min(1, dotProduct))) * 180 / Math.PI;
+                
+                return {
+                    x: x,
+                    y: y,
+                    visible: true,
+                    distance: angularDistance
+                };
             }
 
             renderARDots() {
@@ -445,45 +531,70 @@
                 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 
-                this.targets.forEach(target => {
-                    if (!target.visible) return;
-                    
+                // Sort targets by distance (render far ones first)
+                const visibleTargets = this.targets.filter(t => t.visible).sort((a, b) => b.distance - a.distance);
+                
+                visibleTargets.forEach(target => {
                     const x = target.screenX;
                     const y = target.screenY;
-                    const radius = 20;
                     
-                    // Determine dot state
-                    let color, borderColor;
+                    // Scale dot size based on distance (perspective)
+                    const baseRadius = 20;
+                    const distanceScale = Math.max(0.5, Math.min(1.5, 1 / (target.distance / 30 + 0.5)));
+                    const radius = baseRadius * distanceScale;
+                    
+                    // Determine dot state and color
+                    let color, borderColor, glowSize;
                     if (target.captured) {
                         color = 'rgba(76, 175, 80, 0.8)';
                         borderColor = 'rgba(76, 175, 80, 1)';
-                    } else if (this.isNearTarget(target)) {
+                        glowSize = 0;
+                    } else if (target.distance < this.captureThreshold) {
                         color = 'rgba(255, 193, 7, 0.9)';
                         borderColor = 'rgba(255, 193, 7, 1)';
+                        glowSize = 15;
                     } else {
                         color = 'rgba(66, 165, 245, 0.8)';
                         borderColor = 'rgba(255, 255, 255, 0.9)';
+                        glowSize = 5;
                     }
                     
-                    // Draw dot
+                    // Draw glow effect
+                    if (glowSize > 0) {
+                        const gradient = ctx.createRadialGradient(x, y, radius, x, y, radius + glowSize);
+                        gradient.addColorStop(0, color);
+                        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(x, y, radius + glowSize, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                    
+                    // Draw main dot
                     ctx.beginPath();
                     ctx.arc(x, y, radius, 0, 2 * Math.PI);
                     ctx.fillStyle = color;
                     ctx.fill();
                     
+                    // Draw border
                     ctx.beginPath();
                     ctx.arc(x, y, radius, 0, 2 * Math.PI);
                     ctx.strokeStyle = borderColor;
                     ctx.lineWidth = 3;
                     ctx.stroke();
+                    
+                    // Add center dot for precision
+                    if (target.distance < this.captureThreshold) {
+                        ctx.beginPath();
+                        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                        ctx.fill();
+                    }
                 });
             }
 
             isNearTarget(target) {
-                const azimuthDiff = Math.abs(target.azimuth - this.currentOrientation.alpha);
-                const elevationDiff = Math.abs(target.elevation - this.currentOrientation.beta);
-                
-                return azimuthDiff < this.captureThreshold && elevationDiff < this.captureThreshold;
+                return target.distance < this.captureThreshold;
             }
 
             checkAutoCapture() {
