@@ -195,19 +195,20 @@
         
         .capture-dot {
             position: absolute;
-            width: 20px;
-            height: 20px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
-            background: rgba(0, 123, 255, 0.8);
-            border: 2px solid white;
+            background: rgba(0, 123, 255, 0.9);
+            border: 3px solid white;
             transform: translate(-50%, -50%);
-            transition: all 0.3s ease;
-            box-shadow: 0 0 20px rgba(0, 123, 255, 0.5);
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 0 15px rgba(0, 123, 255, 0.6), 0 0 30px rgba(0, 123, 255, 0.3);
+            z-index: 10;
         }
         
         .capture-dot.captured {
-            background: rgba(52, 199, 89, 0.8);
-            box-shadow: 0 0 20px rgba(52, 199, 89, 0.5);
+            background: rgba(52, 199, 89, 0.9);
+            box-shadow: 0 0 15px rgba(52, 199, 89, 0.6), 0 0 30px rgba(52, 199, 89, 0.3);
         }
         
         .capture-dot.captured::after {
@@ -217,17 +218,38 @@
             left: 50%;
             transform: translate(-50%, -50%);
             color: white;
-            font-size: 12px;
+            font-size: 16px;
             font-weight: bold;
+            text-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
         }
         
         .capture-dot.active {
-            animation: pulse 1s infinite;
+            background: rgba(255, 149, 0, 0.9);
+            box-shadow: 0 0 20px rgba(255, 149, 0, 0.8), 0 0 40px rgba(255, 149, 0, 0.4);
+            transform: translate(-50%, -50%) scale(1.2);
         }
         
-        @keyframes pulse {
-            0%, 100% { transform: translate(-50%, -50%) scale(1); }
-            50% { transform: translate(-50%, -50%) scale(1.2); }
+        .capture-dot.active::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            left: -6px;
+            right: -6px;
+            bottom: -6px;
+            border: 2px solid rgba(255, 149, 0, 0.5);
+            border-radius: 50%;
+            animation: pulse-ring 2s infinite;
+        }
+        
+        @keyframes pulse-ring {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(1.5);
+                opacity: 0;
+            }
         }
         
         .ar-controls {
@@ -579,45 +601,53 @@
         let autoCaptureBudget = 0;
         let scene, camera, renderer, sphere;
         
-        // Geodesic sphere points calculation (51 points)
+        // Geodesic sphere points calculation (proper 51-point sphere grid)
         function calculateCapturePoints() {
             const points = [];
-            const phi = (1 + Math.sqrt(5)) / 2; // Golden ratio
             
-            // Create icosahedron vertices
-            const vertices = [
-                [-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0],
-                [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi],
-                [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1]
+            // Add north and south poles
+            points.push({
+                x: 0, y: 1, z: 0,  // North pole
+                captured: false, id: 0, label: "North Pole"
+            });
+            points.push({
+                x: 0, y: -1, z: 0, // South pole
+                captured: false, id: 1, label: "South Pole"
+            });
+            
+            // Add equatorial and intermediate rings
+            const rings = [
+                { lat: 75, count: 6 },   // Upper ring
+                { lat: 45, count: 8 },   // Upper-mid ring
+                { lat: 15, count: 10 },  // Upper-equatorial ring
+                { lat: 0, count: 12 },   // Equator
+                { lat: -15, count: 10 }, // Lower-equatorial ring
+                { lat: -45, count: 8 },  // Lower-mid ring
+                { lat: -75, count: 6 }   // Lower ring
             ];
             
-            // Add face centers and edge midpoints for more coverage
-            for (let i = 0; i < vertices.length; i++) {
-                const v = vertices[i];
-                const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-                points.push({
-                    x: v[0] / len,
-                    y: v[1] / len,
-                    z: v[2] / len,
-                    captured: false,
-                    id: i
-                });
-            }
+            let pointId = 2;
+            rings.forEach(ring => {
+                const latRad = ring.lat * Math.PI / 180;
+                const y = Math.sin(latRad);
+                const radius = Math.cos(latRad);
+                
+                for (let i = 0; i < ring.count; i++) {
+                    const lonRad = (i * 360 / ring.count) * Math.PI / 180;
+                    const x = radius * Math.cos(lonRad);
+                    const z = radius * Math.sin(lonRad);
+                    
+                    points.push({
+                        x: x, y: y, z: z,
+                        captured: false,
+                        id: pointId++,
+                        label: `Ring ${ring.lat}° Point ${i + 1}`
+                    });
+                }
+            });
             
-            // Add additional points for better coverage
-            for (let i = 0; i < 39; i++) {
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
-                points.push({
-                    x: Math.sin(phi) * Math.cos(theta),
-                    y: Math.sin(phi) * Math.sin(theta),
-                    z: Math.cos(phi),
-                    captured: false,
-                    id: i + 12
-                });
-            }
-            
-            return points.slice(0, 51);
+            console.log(`Generated ${points.length} capture points`);
+            return points.slice(0, 51); // Ensure exactly 51 points
         }
         
         // Screen navigation
@@ -803,7 +833,10 @@
             }
         }
         
-        // Orientation handling with better debugging
+        // Orientation handling with smoothing
+        let orientationHistory = [];
+        const SMOOTHING_FACTOR = 0.8;
+        
         function handleOrientationChange(event) {
             const newOrientation = {
                 alpha: event.alpha || 0,
@@ -812,14 +845,39 @@
             };
             
             // Only update if we have real data
-            if (newOrientation.alpha !== null || newOrientation.beta !== null || newOrientation.gamma !== null) {
-                currentOrientation = newOrientation;
-                updateCaptureDots();
-                checkAutoCapture();
+            if (newOrientation.alpha !== null && newOrientation.beta !== null && newOrientation.gamma !== null) {
+                
+                // Apply exponential smoothing to reduce jitter
+                if (orientationHistory.length > 0) {
+                    const prev = orientationHistory[orientationHistory.length - 1];
+                    currentOrientation = {
+                        alpha: prev.alpha * SMOOTHING_FACTOR + newOrientation.alpha * (1 - SMOOTHING_FACTOR),
+                        beta: prev.beta * SMOOTHING_FACTOR + newOrientation.beta * (1 - SMOOTHING_FACTOR),
+                        gamma: prev.gamma * SMOOTHING_FACTOR + newOrientation.gamma * (1 - SMOOTHING_FACTOR)
+                    };
+                } else {
+                    currentOrientation = newOrientation;
+                }
+                
+                // Keep history for smoothing (limit to last 5 readings)
+                orientationHistory.push(currentOrientation);
+                if (orientationHistory.length > 5) {
+                    orientationHistory.shift();
+                }
+                
+                // Update dots with throttling to improve performance
+                if (!window.dotUpdatePending) {
+                    window.dotUpdatePending = true;
+                    requestAnimationFrame(() => {
+                        updateCaptureDots();
+                        checkAutoCapture();
+                        window.dotUpdatePending = false;
+                    });
+                }
                 
                 // Debug logging (remove in production)
-                if (Math.random() < 0.01) { // Log occasionally
-                    console.log('Orientation:', currentOrientation);
+                if (Math.random() < 0.001) { // Log very occasionally
+                    console.log('Smoothed orientation:', currentOrientation);
                 }
             }
         }
@@ -928,33 +986,36 @@
             });
         }
         
-        // Update dot positions based on orientation
+        // Update dot positions based on orientation (stable positioning)
         function updateCaptureDots() {
             if (!capturePoints || capturePoints.length === 0) return;
             
             const screenWidth = window.innerWidth;
             const screenHeight = window.innerHeight;
             
-            capturePoints.forEach((point, index) => {
-                const dot = document.getElementById(`dot-${index}`);
-                if (!dot) return;
-                
-                // Check if we have real orientation data
-                const hasRealOrientation = currentOrientation.alpha !== 0 || 
-                                         currentOrientation.beta !== 0 || 
-                                         currentOrientation.gamma !== 0;
-                
-                if (hasRealOrientation) {
-                    // Use AR positioning
+            // Check if we have real orientation data
+            const hasRealOrientation = Math.abs(currentOrientation.alpha) > 0.1 || 
+                                     Math.abs(currentOrientation.beta) > 0.1 || 
+                                     Math.abs(currentOrientation.gamma) > 0.1;
+            
+            if (hasRealOrientation) {
+                // AR mode - dots positioned based on device orientation
+                capturePoints.forEach((point, index) => {
+                    const dot = document.getElementById(`dot-${index}`);
+                    if (!dot) return;
+                    
                     const screenPos = worldToScreen(point, currentOrientation);
                     
-                    if (screenPos.visible && screenPos.x >= 0 && screenPos.x <= screenWidth && 
-                        screenPos.y >= 0 && screenPos.y <= screenHeight) {
-                        dot.style.left = `${screenPos.x}px`;
-                        dot.style.top = `${screenPos.y}px`;
+                    if (screenPos.visible) {
+                        dot.style.left = `${Math.round(screenPos.x)}px`;
+                        dot.style.top = `${Math.round(screenPos.y)}px`;
                         dot.style.display = 'block';
                         
-                        // Check if dot is near crosshair
+                        // Scale dots based on distance for depth perception
+                        const scale = Math.max(0.7, Math.min(1.3, 1 / screenPos.distance));
+                        dot.style.transform = `translate(-50%, -50%) scale(${scale})`;
+                        
+                        // Check if dot is near crosshair for auto-capture
                         const centerX = screenWidth / 2;
                         const centerY = screenHeight / 2;
                         const distance = Math.sqrt(
@@ -962,93 +1023,94 @@
                             Math.pow(screenPos.y - centerY, 2)
                         );
                         
-                        if (distance < 50 && !point.captured) {
+                        // Remove any previous active states
+                        dot.classList.remove('active');
+                        
+                        // Only highlight if not captured and close to center
+                        if (distance < 60 && !point.captured) {
                             dot.classList.add('active');
-                        } else {
-                            dot.classList.remove('active');
                         }
+                        
                     } else {
+                        // Hide dots that are not visible (behind camera or off-screen)
                         dot.style.display = 'none';
+                        dot.classList.remove('active');
                     }
-                } else {
-                    // Manual mode - show all dots in grid
-                    const cols = 9;
-                    const rows = 6;
                     
-                    if (index < cols * rows) {
-                        const col = index % cols;
-                        const row = Math.floor(index / cols);
-                        
-                        const x = (screenWidth / (cols + 1)) * (col + 1);
-                        const y = (screenHeight / (rows + 1)) * (row + 1);
-                        
-                        dot.style.left = `${x}px`;
-                        dot.style.top = `${y}px`;
-                        dot.style.display = 'block';
-                    } else {
-                        dot.style.display = 'none';
+                    // Update captured state
+                    if (point.captured) {
+                        dot.classList.add('captured');
                     }
-                }
+                });
                 
-                // Update captured state
-                if (point.captured) {
-                    dot.classList.add('captured');
-                } else {
-                    dot.classList.remove('captured');
-                }
-            });
+            } else {
+                // Manual mode fallback - static grid layout
+                showManualCaptureMode();
+            }
         }
         
-        // Convert 3D world coordinates to screen coordinates
+        // Convert 3D world coordinates to screen coordinates (proper spherical projection)
         function worldToScreen(point, orientation) {
-            // Simple projection - in a real implementation, you'd use proper 3D math
-            const fov = 75 * Math.PI / 180;
-            const aspect = window.innerWidth / window.innerHeight;
+            // Create rotation matrices from device orientation
+            const alphaRad = (orientation.alpha || 0) * Math.PI / 180;
+            const betaRad = (orientation.beta || 0) * Math.PI / 180;
+            const gammaRad = (orientation.gamma || 0) * Math.PI / 180;
             
-            // Rotate point based on device orientation
-            const rotatedPoint = rotatePoint(point, orientation);
+            // Apply device rotation to the point
+            let rotatedPoint = rotatePointByOrientation(point, alphaRad, betaRad, gammaRad);
             
-            // Check if point is in front of camera
-            if (rotatedPoint.z > 0) {
+            // Check if point is behind the camera (z > 0 means behind in our coordinate system)
+            if (rotatedPoint.z > -0.1) {
                 return { visible: false, x: 0, y: 0 };
             }
             
-            // Project to screen
-            const x = (rotatedPoint.x / Math.abs(rotatedPoint.z)) * (window.innerWidth / 2) + window.innerWidth / 2;
-            const y = (rotatedPoint.y / Math.abs(rotatedPoint.z)) * (window.innerHeight / 2) + window.innerHeight / 2;
+            // Project to screen using perspective projection
+            const fov = 75 * Math.PI / 180; // Field of view
+            const aspect = window.innerWidth / window.innerHeight;
+            
+            // Perspective projection
+            const projectionScale = Math.abs(rotatedPoint.z);
+            const screenX = (rotatedPoint.x / projectionScale) * (window.innerWidth / 2) * Math.tan(fov / 2) + window.innerWidth / 2;
+            const screenY = (-rotatedPoint.y / projectionScale) * (window.innerHeight / 2) * Math.tan(fov / 2) / aspect + window.innerHeight / 2;
+            
+            // Check if point is within screen bounds (with some margin)
+            const margin = 100;
+            const visible = screenX >= -margin && screenX <= window.innerWidth + margin && 
+                          screenY >= -margin && screenY <= window.innerHeight + margin;
             
             return {
-                visible: x >= 0 && x <= window.innerWidth && y >= 0 && y <= window.innerHeight,
-                x: x,
-                y: y
+                visible: visible,
+                x: screenX,
+                y: screenY,
+                distance: Math.abs(rotatedPoint.z)
             };
         }
         
-        // Rotate point based on device orientation
-        function rotatePoint(point, orientation) {
-            // Convert orientation to radians
-            const alpha = orientation.alpha * Math.PI / 180;
-            const beta = orientation.beta * Math.PI / 180;
-            const gamma = orientation.gamma * Math.PI / 180;
-            
-            // Apply rotation matrices (simplified)
+        // Rotate point based on device orientation (proper 3D rotation)
+        function rotatePointByOrientation(point, alpha, beta, gamma) {
             let x = point.x;
             let y = point.y;
             let z = point.z;
             
-            // Rotate around Y axis (alpha)
-            const cosAlpha = Math.cos(alpha);
-            const sinAlpha = Math.sin(alpha);
-            const newX = x * cosAlpha - z * sinAlpha;
-            const newZ = x * sinAlpha + z * cosAlpha;
+            // Rotation around Y axis (compass/yaw - alpha)
+            let cosA = Math.cos(alpha);
+            let sinA = Math.sin(alpha);
+            let x1 = x * cosA - z * sinA;
+            let z1 = x * sinA + z * cosA;
             
-            // Rotate around X axis (beta)
-            const cosBeta = Math.cos(beta);
-            const sinBeta = Math.sin(beta);
-            const newY = y * cosBeta - newZ * sinBeta;
-            const finalZ = y * sinBeta + newZ * cosBeta;
+            // Rotation around X axis (pitch - beta)
+            let cosB = Math.cos(beta);
+            let sinB = Math.sin(beta);
+            let y2 = y * cosB - z1 * sinB;
+            let z2 = y * sinB + z1 * cosB;
             
-            return { x: newX, y: newY, z: finalZ };
+            // Rotation around Z axis (roll - gamma)
+            let cosG = Math.cos(gamma);
+            let sinG = Math.sin(gamma);
+            let x3 = x1 * cosG - y2 * sinG;
+            let y3 = x1 * sinG + y2 * cosG;
+            
+            return { x: x3, y: y3, z: z2 };
         }
         
         // Auto-capture logic
