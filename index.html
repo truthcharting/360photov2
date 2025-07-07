@@ -769,18 +769,839 @@
             }, 100);
         }
 
+        // Manual capture (capture any visible dot)
+        function manualCapture() {
+            // Find the closest uncaptured dot to crosshair
+            let closestDot = null;
+            let closestDistance = Infinity;
+            
+            for (let i = 0; i < dotMeshes.length; i++) {
+                const mesh = dotMeshes[i];
+                const point = capturePoints[i];
+                
+                if (!point.captured) {
+                    // Check distance from crosshair
+                    const vector = mesh.position.clone();
+                    vector.project(threeCamera);
+                    
+                    if (vector.z <= 1) { // In front of camera
+                        const screenX = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                        const screenY = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+                        
+                        const centerX = window.innerWidth / 2;
+                        const centerY = window.innerHeight / 2;
+                        const distance = Math.sqrt(
+                            Math.pow(screenX - centerX, 2) + 
+                            Math.pow(screenY - centerY, 2)
+                        );
+                        
+                        if (distance < closestDistance) {
+                            closestDistance = distance;
+                            closestDot = i;
+                        }
+                    }
+                }
+            }
+            
+            if (closestDot !== null && closestDistance < 100) {
+                captureImageAtPoint(closestDot);
+            } else {
+                alert('Point crosshair at an uncaptured blue dot to capture.');
+            }
+        }<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhotoSphere Capture Pro</title>
+    <meta name="theme-color" content="#1a1a2e">
+    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiUGhvdG9TcGhlcmUgQ2FwdHVyZSBQcm8iLCJzaG9ydF9uYW1lIjoiUGhvdG9TcGhlcmUiLCJzdGFydF91cmwiOiIuLyIsImRpc3BsYXkiOiJmdWxsc2NyZWVuIiwidGhlbWVfY29sb3IiOiIjMWExYTJlIiwiYmFja2dyb3VuZF9jb2xvciI6IiMwZjBmMjMiLCJpY29ucyI6W3sic3JjIjoiZGF0YTppbWFnZS9zdmcreG1sO2Jhc2U2NCxQSE4yWnlCNGJXeHVjejBpYUhSMGNEb3ZMM2QzZHk1M015NXZjbWN2TWpBd01DOXpkbWNpSUhkcFpIUm9QU0kxTVRKaUlpQm9aV2xuYUhROUlqVXhNbUlpUGp4amFYSmpiR1VnWTNnOUlqSTFOaUlnWTNrOUlqSTFOaUlnY2owaU1UQXdJaUJtYVd4c1BTSWpOREEwTkRRMElpOCtQQzl6ZG1jKyIsInNpemVzIjoiNTEyeDUxMiIsInR5cGUiOiJpbWFnZS9zdmcreG1sIn1dfQ==">
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/panolens/0.12.1/panolens.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: white;
+            overflow: hidden;
+        }
+
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .front-page {
+            text-align: center;
+            z-index: 1000;
+            background: rgba(15, 15, 35, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            border: 2px solid #444;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .logo {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #4CAF50, #2196F3, #FF9800);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #ccc;
+            margin-bottom: 30px;
+        }
+
+        .version {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .start-btn {
+            background: linear-gradient(45deg, #4CAF50, #2196F3);
+            border: none;
+            padding: 15px 40px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(76, 175, 80, 0.3);
+        }
+
+        .start-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(76, 175, 80, 0.5);
+        }
+
+        .capture-interface {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .camera-view {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ar-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            opacity: 0.8;
+        }
+
+        .crosshair::before,
+        .crosshair::after {
+            content: '';
+            position: absolute;
+            background: white;
+        }
+
+        .crosshair::before {
+            top: 50%;
+            left: 25%;
+            width: 50%;
+            height: 2px;
+            transform: translateY(-50%);
+        }
+
+        .crosshair::after {
+            left: 50%;
+            top: 25%;
+            width: 2px;
+            height: 50%;
+            transform: translateX(-50%);
+        }
+
+        .capture-controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .control-btn {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #fff;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .status-bar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+        }
+
+        .progress {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            margin: 0 15px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #2196F3);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .dot-indicator {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #2196F3;
+            border: 2px solid white;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 500;
+            transition: all 0.3s ease;
+        }
+
+        .dot-indicator.captured {
+            background: #4CAF50;
+            transform: scale(1.2);
+        }
+
+        .dot-indicator.active {
+            background: #FF9800;
+            transform: scale(1.5);
+            box-shadow: 0 0 20px rgba(255, 152, 0, 0.7);
+        }
+
+        .captured-image {
+            position: absolute;
+            width: 100px;
+            height: 75px;
+            border: 2px solid #4CAF50;
+            border-radius: 5px;
+            opacity: 0.8;
+            pointer-events: none;
+            z-index: 300;
+        }
+
+        .permission-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background: #1a1a2e;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 400px;
+            border: 2px solid #444;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: #4CAF50;
+        }
+
+        .modal-text {
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+
+        .modal-btn {
+            background: #4CAF50;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+        }
+
+        .modal-btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .modal-btn.cancel {
+            background: #f44336;
+        }
+
+        .modal-btn.cancel:hover {
+            background: #da190b;
+        }
+
+        .viewer-interface {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+
+        .viewer-controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .back-btn {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #fff;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+        }
+
+        .loading-content {
+            text-align: center;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #333;
+            border-top: 3px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .compass-debug {
+            position: absolute;
+            top: 100px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            z-index: 1000;
+        }
+
+        @media (max-width: 768px) {
+            .logo {
+                font-size: 2rem;
+            }
+            
+            .front-page {
+                padding: 30px 20px;
+                margin: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Front Page -->
+        <div class="front-page" id="frontPage">
+            <div class="logo">📸 PhotoSphere Capture Pro</div>
+            <div class="subtitle">Professional 360° Panoramic Photography</div>
+            <button class="start-btn" onclick="requestPermissions()">Start Capture</button>
+            <div class="version">v1.1.0</div>
+        </div>
+
+        <!-- Permission Modal -->
+        <div class="permission-modal" id="permissionModal">
+            <div class="modal-content">
+                <div class="modal-title">Permissions Required</div>
+                <div class="modal-text" id="modalText">
+                    This app needs access to your camera and device orientation to capture 360° photospheres.
+                </div>
+                <button class="modal-btn" onclick="handlePermission(true)">Allow</button>
+                <button class="modal-btn cancel" onclick="handlePermission(false)">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <div>Processing images...</div>
+                <div id="loadingText">Preparing photosphere...</div>
+            </div>
+        </div>
+
+        <!-- Capture Interface -->
+        <div class="capture-interface" id="captureInterface">
+            <video class="camera-view" id="cameraView" autoplay playsinline></video>
+            <canvas class="ar-overlay" id="arOverlay"></canvas>
+            
+            <!-- Status Bar -->
+            <div class="status-bar">
+                <div class="progress">
+                    <span>Progress:</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <span id="progressText">0/51</span>
+                </div>
+                <div>Hold crosshair on blue dot for auto-capture</div>
+            </div>
+
+            <!-- Crosshair -->
+            <div class="crosshair"></div>
+
+            <!-- Capture Controls -->
+            <div class="capture-controls">
+                <button class="control-btn" onclick="manualCapture()">📷 Manual</button>
+                <button class="control-btn" onclick="finishCapture()">✅ Finish</button>
+                <button class="control-btn" onclick="cancelCapture()">❌ Cancel</button>
+            </div>
+
+            <!-- Debug Info -->
+            <div class="compass-debug" id="compassDebug">
+                <div>α: <span id="alpha">0</span>°</div>
+                <div>β: <span id="beta">0</span>°</div>
+                <div>γ: <span id="gamma">0</span>°</div>
+                <div>Compass: <span id="compass">0</span>°</div>
+            </div>
+        </div>
+
+        <!-- Viewer Interface -->
+        <div class="viewer-interface" id="viewerInterface">
+            <div class="viewer-controls">
+                <button class="back-btn" onclick="backToCapture()">← Back</button>
+                <button class="control-btn" onclick="downloadPhotosphere()">💾 Download</button>
+            </div>
+            <div id="photosphereViewer"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let cameraStream = null;
+        let webXRSession = null;
+        let gl = null;
+        let webXRReferenceSpace = null;
+        let threeRenderer = null;
+        let threeScene = null;
+        let threeCamera = null;
+        let sphereGeometry = null;
+        let dotMeshes = [];
+        let capturedImageMeshes = [];
+        let orientationData = { alpha: 0, beta: 0, gamma: 0 };
+        let capturedImages = [];
+        let capturePoints = [];
+        let isCapturing = false;
+        let autoCaptureCooldown = false;
+        let photosphereViewer = null;
+        let arCanvas = null;
+        let deviceOrientationQuaternion = new THREE.Quaternion();
+
+        // Generate capture points using Fibonacci sphere distribution
+        function generateCapturePoints() {
+            const points = [];
+            const numPoints = 51;
+            const goldenRatio = (1 + Math.sqrt(5)) / 2;
+            
+            for (let i = 0; i < numPoints; i++) {
+                // Fibonacci sphere algorithm for even distribution
+                const theta = 2 * Math.PI * i / goldenRatio;
+                const phi = Math.acos(1 - 2 * (i + 0.5) / numPoints);
+                
+                // Convert to Cartesian coordinates (radius = 5 units from camera)
+                const radius = 5;
+                const x = radius * Math.sin(phi) * Math.cos(theta);
+                const y = radius * Math.cos(phi);
+                const z = radius * Math.sin(phi) * Math.sin(theta);
+                
+                points.push({
+                    id: i,
+                    position: new THREE.Vector3(x, y, z),
+                    captured: false,
+                    image: null,
+                    mesh: null
+                });
+            }
+            
+            return points;
+        }
+
+        // Initialize capture points
+        function initializeCapturePoints() {
+            capturePoints = generateCapturePoints();
+            console.log(`Generated ${capturePoints.length} capture points`);
+        }
+
+        // Initialize Three.js scene for WebXR AR
+        function initializeThreeScene() {
+            // Create Three.js renderer
+            threeRenderer = new THREE.WebGLRenderer({ 
+                canvas: arCanvas,
+                antialias: true,
+                alpha: true 
+            });
+            threeRenderer.setSize(window.innerWidth, window.innerHeight);
+            threeRenderer.setPixelRatio(window.devicePixelRatio);
+            threeRenderer.xr.enabled = true;
+            
+            // Create scene
+            threeScene = new THREE.Scene();
+            
+            // Create camera
+            threeCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+            threeCamera.position.set(0, 0, 0); // Camera at origin (user position)
+            
+            // Create sphere geometry for dots
+            sphereGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            
+            // Create capture point dots
+            createCapturePointMeshes();
+            
+            // Start render loop
+            threeRenderer.setAnimationLoop(renderThreeScene);
+        }
+
+        // Create 3D meshes for capture points
+        function createCapturePointMeshes() {
+            dotMeshes = [];
+            
+            capturePoints.forEach((point, index) => {
+                // Create dot material
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: 0x2196F3,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                // Create mesh
+                const mesh = new THREE.Mesh(sphereGeometry, material);
+                mesh.position.copy(point.position);
+                mesh.userData = { pointIndex: index, captured: false };
+                
+                threeScene.add(mesh);
+                dotMeshes.push(mesh);
+                point.mesh = mesh;
+            });
+        }
+
+        // Update device orientation using WebXR
+        function updateDeviceOrientation() {
+            if (!threeCamera) return;
+            
+            // Convert device orientation to quaternion
+            const alpha = orientationData.alpha * Math.PI / 180;
+            const beta = orientationData.beta * Math.PI / 180;
+            const gamma = orientationData.gamma * Math.PI / 180;
+            
+            // Create rotation quaternion from Euler angles (ZXY order for device orientation)
+            const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+            deviceOrientationQuaternion.setFromEuler(euler);
+            
+            // Apply rotation to camera
+            threeCamera.quaternion.copy(deviceOrientationQuaternion);
+        }
+
+        // Render Three.js scene
+        function renderThreeScene() {
+            if (!threeRenderer || !threeScene || !threeCamera) return;
+            
+            // Update camera orientation based on device
+            updateDeviceOrientation();
+            
+            // Update dot colors and states
+            updateDotStates();
+            
+            // Check for auto-capture
+            checkForAutoCapture();
+            
+            // Render scene
+            threeRenderer.render(threeScene, threeCamera);
+        }
+
+        // Update dot visual states
+        function updateDotStates() {
+            dotMeshes.forEach((mesh, index) => {
+                const point = capturePoints[index];
+                
+                if (point.captured) {
+                    mesh.material.color.setHex(0x4CAF50); // Green for captured
+                    mesh.material.opacity = 0.6;
+                } else {
+                    mesh.material.color.setHex(0x2196F3); // Blue for uncaptured
+                    mesh.material.opacity = 0.8;
+                    
+                    // Add pulsing effect for nearby dots
+                    if (isDotInCrosshair(mesh)) {
+                        mesh.material.color.setHex(0xFF9800); // Orange for target
+                        const pulse = 1 + 0.3 * Math.sin(Date.now() / 200);
+                        mesh.scale.setScalar(pulse);
+                    } else {
+                        mesh.scale.setScalar(1);
+                    }
+                }
+            });
+        }
+
+        // Check if dot is in crosshair
+        function isDotInCrosshair(mesh) {
+            // Get mesh position in screen space
+            const vector = mesh.position.clone();
+            vector.project(threeCamera);
+            
+            // Convert to screen coordinates
+            const screenX = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const screenY = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+            
+            // Check if behind camera
+            if (vector.z > 1) return false;
+            
+            // Check distance from center
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+            const distance = Math.sqrt(
+                Math.pow(screenX - centerX, 2) + 
+                Math.pow(screenY - centerY, 2)
+            );
+            
+            return distance < 40; // 40 pixel tolerance
+        }
+
+        // Auto-capture when crosshair is on uncaptured dot
+        function checkForAutoCapture() {
+            if (autoCaptureCooldown) return;
+            
+            for (let i = 0; i < dotMeshes.length; i++) {
+                const mesh = dotMeshes[i];
+                const point = capturePoints[i];
+                
+                if (!point.captured && isDotInCrosshair(mesh)) {
+                    autoCaptureCooldown = true;
+                    setTimeout(() => {
+                        if (!point.captured && isDotInCrosshair(mesh)) {
+                            captureImageAtPoint(i);
+                        }
+                        autoCaptureCooldown = false;
+                    }, 1000); // 1 second hold time
+                    break;
+                }
+            }
+        }
+
+        // Capture image and place it in 3D space
+        function captureImageAtPoint(pointIndex) {
+            const point = capturePoints[pointIndex];
+            if (point.captured) return;
+            
+            const video = document.getElementById('cameraView');
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0);
+            
+            const imageData = canvas.toDataURL('image/jpeg', 0.9);
+            
+            // Mark point as captured
+            point.captured = true;
+            point.image = imageData;
+            
+            // Store capture data
+            capturedImages.push({
+                data: imageData,
+                position: point.position.clone(),
+                orientation: deviceOrientationQuaternion.clone(),
+                pointIndex: pointIndex
+            });
+            
+            // Create 3D image plane at capture location
+            createImageMeshAtPoint(point, imageData);
+            
+            // Update progress
+            updateProgress();
+            
+            // Visual feedback
+            showCaptureFlash();
+        }
+
+        // Create 3D image mesh at capture point
+        function createImageMeshAtPoint(point, imageData) {
+            // Create image texture
+            const img = new Image();
+            img.onload = () => {
+                const texture = new THREE.Texture(img);
+                texture.needsUpdate = true;
+                
+                // Create plane geometry for image
+                const aspectRatio = img.width / img.height;
+                const planeGeometry = new THREE.PlaneGeometry(0.8 * aspectRatio, 0.8);
+                
+                // Create material with image texture
+                const planeMaterial = new THREE.MeshBasicMaterial({ 
+                    map: texture,
+                    transparent: true,
+                    opacity: 0.8,
+                    side: THREE.DoubleSide
+                });
+                
+                // Create mesh
+                const imageMesh = new THREE.Mesh(planeGeometry, planeMaterial);
+                
+                // Position image at capture point, slightly closer to camera
+                const direction = point.position.clone().normalize();
+                imageMesh.position.copy(direction.multiplyScalar(4.5)); // Slightly closer than dots
+                
+                // Make image face the camera
+                imageMesh.lookAt(new THREE.Vector3(0, 0, 0));
+                
+                threeScene.add(imageMesh);
+                capturedImageMeshes.push(imageMesh);
+            };
+            img.src = imageData;
+        }
+
+        // Update progress display
+        function updateProgress() {
+            const captured = capturedImages.length;
+            const total = capturePoints.length;
+            const percentage = (captured / total) * 100;
+            
+            document.getElementById('progressFill').style.width = percentage + '%';
+            document.getElementById('progressText').textContent = `${captured}/${total}`;
+        }
+
+        // Show capture flash effect
+        function showCaptureFlash() {
+            const flash = document.createElement('div');
+            flash.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: white;
+                opacity: 0.8;
+                z-index: 10000;
+                pointer-events: none;
+            `;
+            document.body.appendChild(flash);
+            
+            setTimeout(() => {
+                flash.style.opacity = '0';
+                setTimeout(() => document.body.removeChild(flash), 200);
+            }, 100);
+        }
+
         // Manual capture
         function manualCapture() {
             captureImage();
         }
 
-        // Handle device orientation with proper 3D camera math
+        // Handle device orientation with WebXR integration
         function handleOrientation(event) {
             // Normalize alpha to 0-360 range to handle wraparound
             let alpha = event.alpha || 0;
             if (alpha < 0) alpha += 360;
             
-            // Store raw values for debugging
+            // Store raw values
             const rawAlpha = event.alpha || 0;
             const rawBeta = event.beta || 0;
             const rawGamma = event.gamma || 0;
@@ -798,28 +1619,19 @@
                 if (alpha >= 360) alpha -= 360;
             }
             
-            // Update orientation data with smoothed values
+            // Update orientation data
             orientationData.alpha = alpha;
             orientationData.beta = rawBeta;
             orientationData.gamma = rawGamma;
-            
-            // Calculate compass heading (0° = North, 90° = East, etc.)
-            let compass = alpha;
             
             // Update debug display
             document.getElementById('alpha').textContent = Math.round(rawAlpha);
             document.getElementById('beta').textContent = Math.round(rawBeta);
             document.getElementById('gamma').textContent = Math.round(rawGamma);
-            document.getElementById('compass').textContent = Math.round(compass);
-            
-            // Redraw AR overlay with new orientation
-            drawAROverlay();
-            
-            // Check for auto capture
-            handleAutoCapture();
+            document.getElementById('compass').textContent = Math.round(alpha);
         }
 
-        // Setup camera
+        // Setup camera and initialize WebXR AR scene
         async function setupCamera() {
             try {
                 const constraints = {
@@ -835,7 +1647,7 @@
                 video.srcObject = cameraStream;
                 
                 video.addEventListener('loadedmetadata', () => {
-                    setupARCanvas();
+                    setupWebXRScene();
                 });
                 
                 return true;
@@ -846,22 +1658,14 @@
             }
         }
 
-        // Setup AR canvas overlay
-        function setupARCanvas() {
-            const canvas = document.getElementById('arOverlay');
-            const video = document.getElementById('cameraView');
+        // Setup WebXR scene
+        function setupWebXRScene() {
+            arCanvas = document.getElementById('arOverlay');
+            arCanvas.width = window.innerWidth;
+            arCanvas.height = window.innerHeight;
             
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            
-            arContext = canvas.getContext('2d');
-            
-            // Start AR rendering loop
-            function renderLoop() {
-                drawAROverlay();
-                requestAnimationFrame(renderLoop);
-            }
-            renderLoop();
+            // Initialize Three.js with WebXR
+            initializeThreeScene();
         }
 
         // Request device permissions
@@ -897,7 +1701,6 @@
             
             // Initialize capture system
             initializeCapturePoints();
-            findNextTarget();
             
             // Start orientation monitoring
             if (window.DeviceOrientationEvent) {
@@ -1096,8 +1899,25 @@
             // Reset state
             capturedImages = [];
             capturePoints = [];
-            currentTargetIndex = 0;
             window.stitchedPhotosphere = null;
+            
+            // Clean up Three.js scene
+            if (threeScene) {
+                // Remove all meshes
+                dotMeshes.forEach(mesh => threeScene.remove(mesh));
+                capturedImageMeshes.forEach(mesh => threeScene.remove(mesh));
+                dotMeshes = [];
+                capturedImageMeshes = [];
+                
+                // Dispose of renderer
+                if (threeRenderer) {
+                    threeRenderer.dispose();
+                    threeRenderer = null;
+                }
+                
+                threeScene = null;
+                threeCamera = null;
+            }
             
             if (photosphereViewer) {
                 photosphereViewer.dispose();
@@ -1124,20 +1944,30 @@
 
         // Handle window resize
         window.addEventListener('resize', () => {
-            if (arContext) {
-                const canvas = arContext.canvas;
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
+            if (threeRenderer && threeCamera) {
+                threeCamera.aspect = window.innerWidth / window.innerHeight;
+                threeCamera.updateProjectionMatrix();
+                threeRenderer.setSize(window.innerWidth, window.innerHeight);
+            }
+            
+            if (arCanvas) {
+                arCanvas.width = window.innerWidth;
+                arCanvas.height = window.innerHeight;
             }
         });
 
         // Handle orientation change
         window.addEventListener('orientationchange', () => {
             setTimeout(() => {
-                if (arContext) {
-                    const canvas = arContext.canvas;
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight;
+                if (threeRenderer && threeCamera) {
+                    threeCamera.aspect = window.innerWidth / window.innerHeight;
+                    threeCamera.updateProjectionMatrix();
+                    threeRenderer.setSize(window.innerWidth, window.innerHeight);
+                }
+                
+                if (arCanvas) {
+                    arCanvas.width = window.innerWidth;
+                    arCanvas.height = window.innerHeight;
                 }
             }, 100);
         });
@@ -1147,7 +1977,7 @@
             window.addEventListener('load', () => {
                 // Create service worker inline
                 const swCode = `
-                    const CACHE_NAME = 'photosphere-v1.0.0';
+                    const CACHE_NAME = 'photosphere-v1.1.0';
                     const urlsToCache = [
                         './',
                         'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
@@ -1189,7 +2019,7 @@
 
         // Initialize app
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('PhotoSphere Capture Pro v1.0.0 initialized');
+            console.log('PhotoSphere Capture Pro v1.1.0 initialized');
             
             // Check for required APIs
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1199,6 +2029,13 @@
             
             if (!window.DeviceOrientationEvent) {
                 console.warn('Device orientation not supported - AR features limited');
+            }
+            
+            // Check WebGL support
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            if (!gl) {
+                alert('WebGL not supported - 3D features will be limited.');
             }
         });
 
