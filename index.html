@@ -316,15 +316,34 @@
                 startBtn.addEventListener('click', () => this.startCapture());
                 captureBtn.addEventListener('click', () => this.manualCapture());
                 saveBtn.addEventListener('click', () => this.savePartial());
+            }
 
-                // Request device orientation permission for iOS
+            async requestOrientationPermission() {
+                // Request device orientation permission for iOS 13+
                 if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    await DeviceOrientationEvent.requestPermission();
+                    try {
+                        const permission = await DeviceOrientationEvent.requestPermission();
+                        if (permission !== 'granted') {
+                            alert('Device orientation permission is required for AR guidance to work properly.');
+                            return false;
+                        }
+                        return true;
+                    } catch (error) {
+                        console.error('Error requesting orientation permission:', error);
+                        return false;
+                    }
                 }
+                return true; // For non-iOS devices
             }
 
             async startCapture() {
                 try {
+                    // First request orientation permission
+                    const orientationGranted = await this.requestOrientationPermission();
+                    if (!orientationGranted) {
+                        return;
+                    }
+
                     this.stream = await navigator.mediaDevices.getUserMedia({
                         video: { 
                             facingMode: 'environment',
@@ -368,8 +387,13 @@
             }
 
             startOrientationTracking() {
+                // Add debugging for orientation
+                console.log('Starting orientation tracking...');
+                
                 window.addEventListener('deviceorientation', (event) => {
                     if (!this.isCapturing) return;
+                    
+                    console.log('Orientation event:', event.alpha, event.beta, event.gamma);
                     
                     this.currentOrientation = {
                         alpha: event.alpha || 0, // compass heading
@@ -381,6 +405,15 @@
                     this.checkAutoCapture();
                     this.updateOrientationInfo();
                 });
+
+                // Fallback: if no orientation data after 3 seconds, show manual mode
+                setTimeout(() => {
+                    if (this.currentOrientation.alpha === 0 && this.currentOrientation.beta === 0) {
+                        console.log('No orientation data detected, enabling manual mode');
+                        document.getElementById('orientationInfo').textContent = 'Manual mode - use capture button';
+                        this.autoCapture = false;
+                    }
+                }, 3000);
             }
 
             updateARDots() {
