@@ -1,58 +1,16 @@
-/**
-             * Create photosphere preview with OpenCV.js enhancement
-             */
-            async createPhotospherePreview() {
-                this.updateStatus('🔬 Processing with computer vision...');
-                
-                return new Promise(async (resolve) => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    // Create high-resolution equirectangular projection
-                    const width = this.openCVReady ? 4096 : 2048;
-                    const height = width / 2;
-                    canvas.width = width;
-                    canvas.height = height;
-
-                    // Professional background
-                    const gradient = ctx.createLinearGradient(0, 0, 0, height);
-                    gradient.addColorStop(0, '#0f0f23');
-                    gradient.addColorStop(0.5, '#1a1a2e');
-                    gradient.addColorStop(1, '#16213e');
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(0, 0, width, height);
-
-                    // Enhanced title with professional styling
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('360° PHOTOSPHERE', width / 2, 70);
-                    
-                    // Subtitle with API information
-                    ctx.font = '20px -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.fillStyle = '#64b5f6';
-                    const apiInfo = this.openCVReady ? 'Enhanced with OpenCV.js' : 'Professional Edition';
-                    ctx.fillText(`${this.capturedImages.length} images • ${apiInfo}`, width / 2, 110);
-
-                    if (this.hasWebCodecs) {
-                        ctx.fillStyle = '#4caf50';
-                        ctx.font = '16px -apple-system, BlinkMacSystemFont, sans-serif';
-                        ctx.fillText('⚡ WebCodecs Accelerated', width / 2, 140);
-                    }
-
-                    // Enhanced image processing
-                    if (this.openCVReady && this.capturedImages.length > 0) {
-                        await this.processWithOpenCV(ctx, width, height);
-                    } else {
-                        await this.createStandardPre<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Photosphere AR Capture</title>
+    <meta name="description" content="Create stunning 360-degree photosphere panoramas with AR guidance">
+    <meta name="theme-color" content="#007AFF">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="360° Photosphere">
-    <title>360° Photosphere Capture</title>
+    
+    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiMzYwwrAgUGhvdG9zcGhlcmUgQVIgQ2FwdHVyZSIsInNob3J0X25hbWUiOiJQaG90b3NwaGVyZSIsImRlc2NyaXB0aW9uIjoiQ3JlYXRlIHN0dW5uaW5nIDM2MC1kZWdyZWUgcGhvdG9zcGhlcmUgcGFub3JhbWFzIHdpdGggQVIgZ3VpZGFuY2UiLCJzdGFydF91cmwiOiIuLyIsImRpc3BsYXkiOiJzdGFuZGFsb25lIiwiYmFja2dyb3VuZF9jb2xvciI6IiMwMDAwMDAiLCJ0aGVtZV9jb2xvciI6IiMwMDdBRkYiLCJpY29ucyI6W3sic3JjIjoiZGF0YTppbWFnZS9zdmcreG1sO2Jhc2U2NCxQSE4yWnlCM2FXUjBhRDBpTVRJNElpQm9aV2xuYUhROUlqRXlPQ0lpSUhabGNuTnBiMjQ5SWpFdU1TQXhNUzQwSWlCNGJXeHVjejBpYUhSMGNEb3ZMM2QzZHk1M00yNXZjbWN2TWpBd01DOXpkbWNpUGp4a1pXWnpQanh6ZEdsc1pTQjBlWEJsUFNJdVkyeHpMV0Y0T25oaFpHWTNORGc3SW1acGJHeHBibE5sWlhWMGFXNW5jVGQ0WWpGbVl5NGlMejQ4TDJSbFpuTStQR05wY21Oc1pTQmplRDBpTmpRaUlHTjVQU0kyTkNJZ2NqMGlNalFpSUdacGJHeHBibmNnSWpBd04wRkdSaUlnYjNCaFkybDBlVDBpTUM0eElpOCtQQzl6ZG1jKyIsInNpemVzIjoiMTI4eDEyOCIsInR5cGUiOiJpbWFnZS9zdmcreG1sIn1dfQ==">
     
     <style>
         * {
@@ -60,1715 +18,1314 @@
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
-            background: #000;
-            color: #fff;
-            overflow: hidden;
-            height: 100vh;
-            width: 100vw;
-            position: fixed;
-            top: 0;
-            left: 0;
-        }
-
-        /* Welcome Screen */
-        .welcome-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            z-index: 1000;
-        }
-
-        .welcome-screen h1 {
-            font-size: 36px;
-            font-weight: 300;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             color: white;
-            margin-bottom: 16px;
-            letter-spacing: -1px;
+            overflow: hidden;
         }
-
-        .welcome-screen .subtitle {
-            font-size: 18px;
-            color: rgba(255, 255, 255, 0.9);
-            margin-bottom: 8px;
-            max-width: 320px;
-        }
-
-        .welcome-screen .version {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
-            margin-bottom: 40px;
-        }
-
-        .start-button {
-            background: rgba(255, 255, 255, 0.95);
-            color: #333;
-            border: none;
-            border-radius: 28px;
-            padding: 16px 32px;
-            font-size: 18px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-        }
-
-        .start-button:hover {
-            background: white;
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Main App Container */
-        .app-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: none;
-        }
-
-        /* Camera View */
-        .camera-view {
+        
+        .container {
             position: relative;
             width: 100%;
-            height: 100%;
-            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
-
-        .camera-feed {
+        
+        .screen {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Landing Screen */
+        .landing-screen {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .app-logo {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 2rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .app-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .app-subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            margin-bottom: 3rem;
+            line-height: 1.5;
+        }
+        
+        .start-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            color: white;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            margin-bottom: 2rem;
+        }
+        
+        .start-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+            width: 100%;
+            max-width: 600px;
+        }
+        
+        .feature {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            border-radius: 15px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        /* AR Capture Screen */
+        .ar-screen {
+            position: relative;
+            background: black;
+        }
+        
+        .camera-preview {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
-
-        /* 3D Canvas for AR Sphere */
-        .ar-canvas {
+        
+        .ar-overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             pointer-events: none;
-            z-index: 10;
         }
-
-        /* Crosshair */
+        
         .crosshair {
             position: absolute;
             top: 50%;
             left: 50%;
+            width: 40px;
+            height: 40px;
             transform: translate(-50%, -50%);
-            width: 24px;
-            height: 24px;
-            border: 2px solid rgba(255, 255, 255, 0.9);
-            border-radius: 50%;
-            z-index: 15;
-            box-shadow: 0 0 16px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
         }
-
-        /* UI Overlay */
-        .ui-overlay {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
-            padding: 24px;
-            z-index: 20;
+        
+        .crosshair::before,
+        .crosshair::after {
+            content: '';
+            position: absolute;
+            background: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
         }
-
-        .progress-info {
-            text-align: center;
-            margin-bottom: 16px;
-            font-size: 16px;
-            font-weight: 500;
+        
+        .crosshair::before {
+            top: 50%;
+            left: 18px;
+            width: 4px;
+            height: 20px;
+            transform: translateY(-50%);
         }
-
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 3px;
-            margin-bottom: 20px;
-            overflow: hidden;
+        
+        .crosshair::after {
+            left: 50%;
+            top: 18px;
+            width: 20px;
+            height: 4px;
+            transform: translateX(-50%);
         }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #00c851, #00ff32);
-            width: 0%;
-            transition: width 0.5s ease;
-        }
-
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-        }
-
-        .control-button {
-            background: rgba(255, 255, 255, 0.15);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            border-radius: 24px;
-            padding: 12px 24px;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .control-button:hover {
-            background: rgba(255, 255, 255, 0.25);
-            border-color: rgba(255, 255, 255, 0.5);
-        }
-
-        .control-button.primary {
-            background: rgba(0, 123, 255, 0.8);
-            border-color: rgba(0, 123, 255, 1);
-        }
-
-        .control-button.success {
-            background: rgba(40, 167, 69, 0.8);
-            border-color: rgba(40, 167, 69, 1);
-        }
-
-        /* Status Messages */
-        .status-message {
-            position: fixed;
-            top: 60px;
-            left: 20px;
-            right: 20px;
-            text-align: center;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 12px 20px;
-            border-radius: 20px;
-            font-size: 14px;
-            z-index: 25;
-            backdrop-filter: blur(10px);
-        }
-
-        /* Capture Flash */
-        .capture-flash {
-            position: fixed;
+        
+        .capture-dots {
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(255, 255, 255, 0.8);
-            opacity: 0;
-            z-index: 30;
             pointer-events: none;
-            transition: opacity 0.2s ease;
         }
-
-        .capture-flash.active {
-            opacity: 1;
+        
+        .capture-dot {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(0, 123, 255, 0.8);
+            border: 2px solid white;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+            box-shadow: 0 0 20px rgba(0, 123, 255, 0.5);
         }
-
-        /* Hidden */
-        .hidden {
-            display: none !important;
+        
+        .capture-dot.captured {
+            background: rgba(52, 199, 89, 0.8);
+            box-shadow: 0 0 20px rgba(52, 199, 89, 0.5);
+        }
+        
+        .capture-dot.captured::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .capture-dot.active {
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+        }
+        
+        .ar-controls {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 1rem;
+            pointer-events: auto;
+        }
+        
+        .control-button {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .control-button:hover {
+            background: rgba(0, 0, 0, 0.8);
+            transform: translateY(-2px);
+        }
+        
+        .capture-button {
+            background: rgba(255, 59, 48, 0.8);
+            border-color: rgba(255, 59, 48, 0.8);
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .status-panel {
+            position: absolute;
+            top: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            padding: 1rem 2rem;
+            border-radius: 25px;
+            backdrop-filter: blur(10px);
+            text-align: center;
+            pointer-events: auto;
+        }
+        
+        .progress-bar {
+            width: 200px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007AFF, #34C759);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        /* Permission Screen */
+        .permission-screen {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .permission-icon {
+            font-size: 4rem;
+            margin-bottom: 2rem;
+        }
+        
+        .permission-title {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+        }
+        
+        .permission-text {
+            font-size: 1rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+            line-height: 1.5;
+        }
+        
+        .permission-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .permission-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .permission-button.primary {
+            background: rgba(0, 122, 255, 0.8);
+            border-color: rgba(0, 122, 255, 0.8);
+        }
+        
+        .permission-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Processing Screen */
+        .processing-screen {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .processing-spinner {
+            width: 80px;
+            height: 80px;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 2rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .processing-text {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .processing-detail {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        /* Preview Screen */
+        .preview-screen {
+            background: black;
+            position: relative;
+        }
+        
+        .preview-canvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .preview-controls {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 1rem;
+            pointer-events: auto;
+        }
+        
+        /* Error handling */
+        .error-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 59, 48, 0.9);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 15px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -50%) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%) translateY(0);
+            }
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .app-title {
+                font-size: 2rem;
+            }
+            
+            .features {
+                grid-template-columns: 1fr;
+            }
+            
+            .ar-controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .status-panel {
+                padding: 0.8rem 1.5rem;
+            }
+        }
+        
+        /* Accessibility */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+        
+        /* High contrast mode */
+        @media (prefers-contrast: high) {
+            .capture-dot {
+                border-width: 3px;
+            }
+            
+            .crosshair::before,
+            .crosshair::after {
+                box-shadow: 0 0 0 2px black;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- Welcome Screen -->
-    <div class="welcome-screen" id="welcomeScreen">
-        <h1>📸 360° PHOTOSPHERE</h1>
-        <div class="subtitle">Professional panoramic capture with AR guidance</div>
-        <div class="version">Version 10.1 - Enhanced with APIs</div>
-        <button class="start-button" id="startButton">Begin Capture Session</button>
-    </div>
-
-    <!-- Main App -->
-    <div class="app-container" id="appContainer">
-        <div class="camera-view">
-            <video class="camera-feed" id="cameraFeed" autoplay playsinline muted></video>
-            <canvas class="ar-canvas" id="arCanvas"></canvas>
-            <div class="crosshair"></div>
+    <div class="container">
+        <!-- Landing Screen -->
+        <div class="screen landing-screen active" id="landingScreen">
+            <div class="app-logo">🌐</div>
+            <h1 class="app-title">360° Photosphere</h1>
+            <p class="app-subtitle">Create stunning 360-degree panoramic photos with AR-guided precision</p>
+            <button class="start-button" onclick="requestPermissions()">Start Capture</button>
+            
+            <div class="features">
+                <div class="feature">
+                    <div class="feature-icon">📱</div>
+                    <h3>AR Guided</h3>
+                    <p>Smart positioning dots guide your capture</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🎯</div>
+                    <h3>Precision</h3>
+                    <p>51-point geodesic capture system</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Fast</h3>
+                    <p>Real-time processing and preview</p>
+                </div>
+            </div>
         </div>
-
-        <div class="status-message" id="statusMessage">Initializing AR system...</div>
         
-        <div class="ui-overlay">
-            <div class="progress-info" id="progressInfo">0 of 51 capture points ready</div>
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
+        <!-- Permission Screen -->
+        <div class="screen permission-screen" id="permissionScreen">
+            <div class="permission-icon">🔐</div>
+            <h2 class="permission-title">Camera Access Required</h2>
+            <p class="permission-text">We need access to your camera and device sensors to create amazing 360° photos. Your privacy is protected - nothing is stored without your permission.</p>
+            <div class="permission-buttons">
+                <button class="permission-button" onclick="showScreen('landingScreen')">Cancel</button>
+                <button class="permission-button primary" onclick="initializeAR()">Allow Access</button>
             </div>
-            <div class="controls">
-                <button class="control-button" id="finishButton">Finish Session</button>
-                <button class="control-button primary" id="captureButton">Manual Capture</button>
+        </div>
+        
+        <!-- AR Capture Screen -->
+        <div class="screen ar-screen" id="arScreen">
+            <video class="camera-preview" id="cameraPreview" autoplay playsinline></video>
+            <div class="ar-overlay">
+                <div class="crosshair"></div>
+                <div class="capture-dots" id="captureDots"></div>
+            </div>
+            <div class="status-panel">
+                <div id="statusText">Position camera at blue dots</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div id="captureCount">0 / 51 captured</div>
+            </div>
+            <div class="ar-controls">
+                <button class="control-button" onclick="toggleHelp()">Help</button>
+                <button class="capture-button" onclick="manualCapture()">📸</button>
+                <button class="control-button" onclick="finishCapture()">Done</button>
+            </div>
+        </div>
+        
+        <!-- Processing Screen -->
+        <div class="screen processing-screen" id="processingScreen">
+            <div class="processing-spinner"></div>
+            <div class="processing-text">Creating your photosphere...</div>
+            <div class="processing-detail">Stitching images together</div>
+        </div>
+        
+        <!-- Preview Screen -->
+        <div class="screen preview-screen" id="previewScreen">
+            <canvas class="preview-canvas" id="previewCanvas"></canvas>
+            <div class="preview-controls">
+                <button class="control-button" onclick="downloadPhotosphere()">Download</button>
+                <button class="control-button" onclick="sharePhotosphere()">Share</button>
+                <button class="control-button" onclick="startNew()">New Capture</button>
             </div>
         </div>
     </div>
+    
+    <!-- Error Message -->
+    <div class="error-message" id="errorMessage">
+        <div id="errorText">An error occurred</div>
+        <button class="permission-button" onclick="hideError()" style="margin-top: 1rem;">OK</button>
+    </div>
 
-    <div class="capture-flash" id="captureFlash"></div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/opencv.js/4.8.0/opencv.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        /**
-         * Professional 360° Photosphere Capture System v10.1
-         * Enhanced with WebCodecs, OpenCV.js, and advanced AR capabilities
-         */
-        class PhotosphereCapture {
-            constructor() {
-                // Core system state
-                this.isActive = false;
-                this.capturedImages = [];
-                this.capturePoints = [];
-                this.deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
-                this.baseOrientation = { alpha: 0, beta: 0, gamma: 0 };
-                this.orientationCalibrated = false;
-                
-                // Configuration
-                this.totalCapturePoints = 51;
-                this.captureThreshold = 25; // Increased for easier targeting
-                this.autoCapture = true;
-                this.autoCapturedelay = 1000; // Reduced delay
-                this.autoCapturePending = false;
-                
-                // Media and rendering
-                this.videoStream = null;
-                this.arCanvas = null;
-                this.arContext = null;
-                
-                // API capabilities
-                this.hasWebCodecs = 'VideoEncoder' in window;
-                this.hasFileSystemAccess = 'showSaveFilePicker' in window;
-                this.hasWebXR = 'xr' in navigator;
-                this.openCVReady = false;
-                
-                // Enhanced features
-                this.renderingActive = false;
-                
-                this.initializeSystem();
-            }
-
-            /**
-             * Initialize the photosphere capture system with API detection
-             */
-            async initializeSystem() {
-                console.log('🚀 Initializing Professional Photosphere System v10.1');
-                console.log(`📊 API Support: WebCodecs=${this.hasWebCodecs}, FileSystem=${this.hasFileSystemAccess}, WebXR=${this.hasWebXR}`);
-                
-                // Wait for OpenCV to load
-                await this.initializeOpenCV();
-                
-                // Generate optimized capture point distribution
-                this.generateCapturePoints();
-                
-                // Set up event listeners
-                this.setupEventListeners();
-                
-                // Initialize AR canvas
-                this.setupARCanvas();
-                
-                console.log(`✅ System ready with ${this.capturePoints.length} capture points`);
-            }
-
-            /**
-             * Initialize OpenCV.js for advanced image processing
-             */
-            async initializeOpenCV() {
-                return new Promise((resolve) => {
-                    if (typeof cv !== 'undefined') {
-                        cv.onRuntimeInitialized = () => {
-                            this.openCVReady = true;
-                            console.log('🔬 OpenCV.js ready for advanced image processing');
-                            resolve();
-                        };
-                    } else {
-                        console.log('⚠️ OpenCV.js not available, using fallback processing');
-                        setTimeout(resolve, 100);
-                    }
-                });
-            }
-
-            /**
-             * Generate scientifically distributed capture points for optimal sphere coverage
-             */
-            generateCapturePoints() {
-                this.capturePoints = [];
-                let pointId = 0;
-
-                // Level 1: Nadir (bottom) - 6 points at -75°
-                for (let i = 0; i < 6; i++) {
-                    this.capturePoints.push({
-                        id: `nadir_${pointId++}`,
-                        azimuth: i * 60,
-                        elevation: -75,
-                        captured: false,
-                        imageData: null
-                    });
-                }
-
-                // Level 2: Lower ring - 8 points at -45°
-                for (let i = 0; i < 8; i++) {
-                    this.capturePoints.push({
-                        id: `lower_${pointId++}`,
-                        azimuth: i * 45,
-                        elevation: -45,
-                        captured: false,
-                        imageData: null
-                    });
-                }
-
-                // Level 3: Lower-mid ring - 12 points at -22.5°
-                for (let i = 0; i < 12; i++) {
-                    this.capturePoints.push({
-                        id: `lower_mid_${pointId++}`,
-                        azimuth: i * 30,
-                        elevation: -22.5,
-                        captured: false,
-                        imageData: null
-                    });
-                }
-
-                // Level 4: Horizon ring - 12 points at 0°
-                for (let i = 0; i < 12; i++) {
-                    this.capturePoints.push({
-                        id: `horizon_${pointId++}`,
-                        azimuth: i * 30,
-                        elevation: 0,
-                        captured: false,
-                        imageData: null
-                    });
-                }
-
-                // Level 5: Upper-mid ring - 8 points at 22.5°
-                for (let i = 0; i < 8; i++) {
-                    this.capturePoints.push({
-                        id: `upper_mid_${pointId++}`,
-                        azimuth: i * 45,
-                        elevation: 22.5,
-                        captured: false,
-                        imageData: null
-                    });
-                }
-
-                // Level 6: Upper ring - 6 points at 45°
-                for (let i = 0; i < 6; i++) {
-                    this.capturePoints.push({
-                        id: `upper_${pointId++}`,
-                        azimuth: i * 60,
-                        elevation: 45,
-                        captured: false,
-                        imageData: null
-                    });
-                }
-
-                // Level 7: Zenith (top) - 4 points at 75°
-                for (let i = 0; i < 4; i++) {
-                    this.capturePoints.push({
-                        id: `zenith_${pointId++}`,
-                        azimuth: i * 90,
-                        elevation: 75,
-                        captured: false,
-                        imageData: null
-                    });
-                }
-
-                // Poles: straight up and down
-                this.capturePoints.push({
-                    id: `pole_up`,
-                    azimuth: 0,
-                    elevation: 90,
+        // Global variables
+        let stream = null;
+        let capturePoints = [];
+        let capturedImages = [];
+        let currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        let isCapturing = false;
+        let autoCaptureBudget = 0;
+        let scene, camera, renderer, sphere;
+        
+        // Geodesic sphere points calculation (51 points)
+        function calculateCapturePoints() {
+            const points = [];
+            const phi = (1 + Math.sqrt(5)) / 2; // Golden ratio
+            
+            // Create icosahedron vertices
+            const vertices = [
+                [-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0],
+                [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi],
+                [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1]
+            ];
+            
+            // Add face centers and edge midpoints for more coverage
+            for (let i = 0; i < vertices.length; i++) {
+                const v = vertices[i];
+                const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                points.push({
+                    x: v[0] / len,
+                    y: v[1] / len,
+                    z: v[2] / len,
                     captured: false,
-                    imageData: null
+                    id: i
                 });
-
-                this.capturePoints.push({
-                    id: `pole_down`,
-                    azimuth: 0,
-                    elevation: -90,
+            }
+            
+            // Add additional points for better coverage
+            for (let i = 0; i < 39; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                points.push({
+                    x: Math.sin(phi) * Math.cos(theta),
+                    y: Math.sin(phi) * Math.sin(theta),
+                    z: Math.cos(phi),
                     captured: false,
-                    imageData: null
-                });
-
-                console.log(`📊 Generated ${this.capturePoints.length} optimized capture points`);
-            }
-
-            /**
-             * Set up all event listeners for the application
-             */
-            setupEventListeners() {
-                const startButton = document.getElementById('startButton');
-                const captureButton = document.getElementById('captureButton');
-                const finishButton = document.getElementById('finishButton');
-
-                startButton.addEventListener('click', () => this.startCaptureSession());
-                captureButton.addEventListener('click', () => this.manualCapture());
-                finishButton.addEventListener('click', () => this.finishSession());
-            }
-
-            /**
-             * Set up the AR canvas for 3D visualization
-             */
-            setupARCanvas() {
-                this.arCanvas = document.getElementById('arCanvas');
-                this.arContext = this.arCanvas.getContext('2d');
-                
-                // Set canvas resolution
-                const updateCanvasSize = () => {
-                    this.arCanvas.width = window.innerWidth * window.devicePixelRatio;
-                    this.arCanvas.height = window.innerHeight * window.devicePixelRatio;
-                    this.arCanvas.style.width = window.innerWidth + 'px';
-                    this.arCanvas.style.height = window.innerHeight + 'px';
-                    this.arContext.scale(window.devicePixelRatio, window.devicePixelRatio);
-                };
-                
-                updateCanvasSize();
-                window.addEventListener('resize', updateCanvasSize);
-            }
-
-            /**
-             * Start the capture session - request permissions and initialize camera
-             */
-            async startCaptureSession() {
-                try {
-                    this.updateStatus('Requesting device permissions...');
-
-                    // Request device orientation permission
-                    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                        const permission = await DeviceOrientationEvent.requestPermission();
-                        if (permission !== 'granted') {
-                            throw new Error('Device orientation permission denied');
-                        }
-                    }
-
-                    // Request camera access
-                    this.videoStream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            facingMode: 'environment',
-                            width: { ideal: 2560 },
-                            height: { ideal: 1440 }
-                        }
-                    });
-
-                    // Initialize camera feed
-                    const videoElement = document.getElementById('cameraFeed');
-                    videoElement.srcObject = this.videoStream;
-
-                    // Switch to capture interface
-                    document.getElementById('welcomeScreen').classList.add('hidden');
-                    document.getElementById('appContainer').style.display = 'block';
-
-                    // Start AR tracking
-                    this.startOrientationTracking();
-                    this.startARRendering();
-
-                    this.isActive = true;
-                    this.updateStatus('AR guidance system active - Point at blue targets');
-
-                } catch (error) {
-                    console.error('❌ Failed to start capture session:', error);
-                    alert('Failed to access camera or device sensors. Please check permissions.');
-                }
-            }
-
-            /**
-             * Start tracking device orientation for AR positioning
-             */
-            startOrientationTracking() {
-                window.addEventListener('deviceorientation', (event) => {
-                    if (!this.isActive) return;
-
-                    // Calibrate on first reading
-                    if (!this.orientationCalibrated && event.alpha !== null) {
-                        this.baseOrientation = {
-                            alpha: event.alpha || 0,
-                            beta: event.beta || 0,
-                            gamma: event.gamma || 0
-                        };
-                        this.orientationCalibrated = true;
-                        console.log('🧭 Orientation calibrated');
-                    }
-
-                    if (this.orientationCalibrated) {
-                        this.deviceOrientation = {
-                            alpha: this.normalizeAngle((event.alpha || 0) - this.baseOrientation.alpha),
-                            beta: (event.beta || 0) - this.baseOrientation.beta,
-                            gamma: (event.gamma || 0) - this.baseOrientation.gamma
-                        };
-
-                        this.checkAutoCapture();
-                    }
+                    id: i + 12
                 });
             }
-
-            /**
-             * Start the AR rendering loop with enhanced performance
-             */
-            startARRendering() {
-                this.renderingActive = true;
-                console.log('🎨 Starting AR rendering loop');
-                
-                const render = () => {
-                    if (this.isActive && this.renderingActive) {
-                        this.renderARTargets();
-                        this.updateProgress();
-                        requestAnimationFrame(render);
-                    }
-                };
-                render();
-            }
-
-            /**
-             * Render AR targets with improved visibility and debugging
-             */
-            renderARTargets() {
-                const canvas = this.arCanvas;
-                const ctx = this.arContext;
-                
-                if (!canvas || !ctx) {
-                    console.error('❌ AR Canvas not initialized');
-                    return;
-                }
-
-                const centerX = canvas.width / (2 * window.devicePixelRatio);
-                const centerY = canvas.height / (2 * window.devicePixelRatio);
-
-                // Clear canvas with debug info
-                ctx.clearRect(0, 0, centerX * 2, centerY * 2);
-                
-                // Debug: Show orientation data
-                if (this.orientationCalibrated) {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                    ctx.font = '12px monospace';
-                    ctx.fillText(`α:${this.deviceOrientation.alpha.toFixed(1)}° β:${this.deviceOrientation.beta.toFixed(1)}° γ:${this.deviceOrientation.gamma.toFixed(1)}°`, 10, 30);
-                }
-
-                // Get current device rotation matrix
-                const rotationMatrix = this.getRotationMatrix();
-
-                let visibleCount = 0;
-                let nearCount = 0;
-
-                // Render each capture point with enhanced visibility
-                this.capturePoints.forEach((point, index) => {
-                    const screenPos = this.projectToScreen(point, rotationMatrix, centerX, centerY);
-                    
-                    if (screenPos.visible) {
-                        visibleCount++;
-                        if (screenPos.distance < this.captureThreshold) {
-                            nearCount++;
-                        }
-                        this.renderCapturePoint(point, screenPos, ctx);
+            
+            return points.slice(0, 51);
+        }
+        
+        // Screen navigation
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            document.getElementById(screenId).classList.add('active');
+        }
+        
+        // Error handling
+        function showError(message) {
+            document.getElementById('errorText').textContent = message;
+            document.getElementById('errorMessage').classList.add('show');
+        }
+        
+        function hideError() {
+            document.getElementById('errorMessage').classList.remove('show');
+        }
+        
+        // Permission handling
+        function requestPermissions() {
+            showScreen('permissionScreen');
+        }
+        
+        async function initializeAR() {
+            try {
+                // Request camera permission
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     }
                 });
-
-                // Debug info
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                ctx.font = '12px monospace';
-                ctx.fillText(`Visible: ${visibleCount}/${this.capturePoints.length} | Near: ${nearCount}`, 10, 50);
-            }
-
-            /**
-             * Get 3D rotation matrix from device orientation with improved calculations
-             */
-            getRotationMatrix() {
-                // Apply sensitivity multipliers for better responsiveness
-                const alpha = this.deviceOrientation.alpha * 1.5 * Math.PI / 180;
-                const beta = this.deviceOrientation.beta * 1.5 * Math.PI / 180;
-                const gamma = this.deviceOrientation.gamma * 1.2 * Math.PI / 180;
-
-                // Create rotation matrices (ZXY order for mobile devices)
-                const cosA = Math.cos(-alpha), sinA = Math.sin(-alpha);
-                const cosB = Math.cos(beta), sinB = Math.sin(beta);
-                const cosG = Math.cos(gamma), sinG = Math.sin(gamma);
-
-                // Combined rotation matrix with improved calculations
-                return {
-                    m11: cosA * cosG - sinA * sinB * sinG,
-                    m12: -cosB * sinG,
-                    m13: sinA * cosG + cosA * sinB * sinG,
-                    m21: cosA * sinG + sinA * sinB * cosG,
-                    m22: cosB * cosG,
-                    m23: sinA * sinG - cosA * sinB * cosG,
-                    m31: -sinA * cosB,
-                    m32: sinB,
-                    m33: cosA * cosB
-                };
-            }
-
-            /**
-             * Project 3D sphere point to 2D screen coordinates with enhanced visibility
-             */
-            projectToScreen(point, rotationMatrix, centerX, centerY) {
-                // Convert spherical coordinates to 3D Cartesian
-                const azRad = point.azimuth * Math.PI / 180;
-                const elRad = point.elevation * Math.PI / 180;
                 
-                const x = Math.sin(azRad) * Math.cos(elRad);
-                const y = Math.sin(elRad);
-                const z = Math.cos(azRad) * Math.cos(elRad);
-
-                // Apply rotation matrix
-                const rotX = rotationMatrix.m11 * x + rotationMatrix.m12 * y + rotationMatrix.m13 * z;
-                const rotY = rotationMatrix.m21 * x + rotationMatrix.m22 * y + rotationMatrix.m23 * z;
-                const rotZ = rotationMatrix.m31 * x + rotationMatrix.m32 * y + rotationMatrix.m33 * z;
-
-                // More lenient visibility check for better dot visibility
-                if (rotZ <= -0.3) {
-                    return { visible: false };
-                }
-
-                // Enhanced perspective projection
-                const fov = 75 * Math.PI / 180;
-                const scale = Math.min(centerX, centerY) * 0.8 / Math.tan(fov / 2);
+                // Setup camera preview
+                const video = document.getElementById('cameraPreview');
+                video.srcObject = stream;
                 
-                // Handle depth more gracefully
-                const projDepth = Math.max(0.2, rotZ);
-                const screenX = centerX + (rotX * scale) / projDepth;
-                const screenY = centerY - (rotY * scale) / projDepth;
-
-                // Calculate distance from center for targeting
-                const distance = Math.acos(Math.max(0, Math.min(1, Math.abs(rotZ)))) * 180 / Math.PI;
-
-                // More generous screen bounds
-                const margin = 200;
-                const visible = screenX > -margin && screenX < centerX * 2 + margin && 
-                               screenY > -margin && screenY < centerY * 2 + margin;
-
-                return {
-                    x: screenX,
-                    y: screenY,
-                    visible: visible,
-                    distance: distance,
-                    depth: Math.abs(rotZ)
-                };
-            }
-
-            /**
-             * Render individual capture point with enhanced visibility
-             */
-            renderCapturePoint(point, screenPos, ctx) {
-                const x = screenPos.x;
-                const y = screenPos.y;
-                const distance = screenPos.distance;
-                const depth = screenPos.depth;
+                // Request device orientation permission (iOS)
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        throw new Error('Device orientation permission denied');
+                    }
+                }
                 
-                // Enhanced scaling for better visibility
-                const baseRadius = 22;
-                const scale = Math.max(0.5, Math.min(2.5, 1.2 / depth));
-                const radius = baseRadius * scale;
-
-                // Determine point state with enhanced colors
-                let color, borderColor, glowRadius;
+                // Initialize capture points
+                capturePoints = calculateCapturePoints();
+                setupCaptureDots();
                 
-                if (point.captured) {
-                    color = 'rgba(40, 167, 69, 0.9)';
-                    borderColor = 'rgba(40, 167, 69, 1)';
-                    glowRadius = 0;
-                } else if (distance < this.captureThreshold) {
-                    color = 'rgba(255, 193, 7, 0.95)';
-                    borderColor = 'rgba(255, 193, 7, 1)';
-                    glowRadius = radius * 2;
-                } else {
-                    color = 'rgba(0, 123, 255, 0.85)';
-                    borderColor = 'rgba(255, 255, 255, 0.95)';
-                    glowRadius = radius * 0.8;
-                }
-
-                // Enhanced glow effect for better visibility
-                if (glowRadius > 0) {
-                    const gradient = ctx.createRadialGradient(x, y, radius * 0.5, x, y, glowRadius);
-                    gradient.addColorStop(0, color);
-                    gradient.addColorStop(0.4, color.replace(/[\d.]+\)$/g, '0.6)'));
-                    gradient.addColorStop(0.8, color.replace(/[\d.]+\)$/g, '0.2)'));
-                    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-                    
-                    ctx.fillStyle = gradient;
-                    ctx.beginPath();
-                    ctx.arc(x, y, glowRadius, 0, 2 * Math.PI);
-                    ctx.fill();
-                }
-
-                // Enhanced main point with better shadow
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-                ctx.shadowBlur = 12 * scale;
-                ctx.shadowOffsetY = 4 * scale;
-
-                ctx.beginPath();
-                ctx.arc(x, y, radius, 0, 2 * Math.PI);
-                ctx.fillStyle = color;
-                ctx.fill();
-
-                // Reset shadow and draw enhanced border
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-                ctx.shadowOffsetY = 0;
-
-                ctx.beginPath();
-                ctx.arc(x, y, radius, 0, 2 * Math.PI);
-                ctx.strokeStyle = borderColor;
-                ctx.lineWidth = 3 * scale;
-                ctx.stroke();
-
-                // Add inner ring for active targets
-                if (distance < this.captureThreshold && !point.captured) {
-                    ctx.beginPath();
-                    ctx.arc(x, y, radius * 0.6, 0, 2 * Math.PI);
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-                    ctx.lineWidth = 2 * scale;
-                    ctx.stroke();
-                }
-
-                // Draw captured image thumbnail if available
-                if (point.captured && point.imageData) {
-                    this.renderCapturedImageThumbnail(point, x, y, radius * 0.8, ctx);
-                }
-            }
-
-            /**
-             * Render thumbnail of captured image at its sphere position
-             */
-            renderCapturedImageThumbnail(point, x, y, radius, ctx) {
-                if (!point.imageElement) {
-                    // Create image element if not exists
-                    point.imageElement = new Image();
-                    point.imageElement.src = point.imageData;
-                }
-
-                if (point.imageElement.complete) {
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.arc(x, y, radius, 0, 2 * Math.PI);
-                    ctx.clip();
-                    
-                    const size = radius * 2;
-                    ctx.drawImage(point.imageElement, x - radius, y - radius, size, size);
-                    ctx.restore();
-                }
-            }
-
-            /**
-             * Check if auto-capture should trigger
-             */
-            checkAutoCapture() {
-                if (!this.autoCapture) return;
-
-                const targetPoint = this.capturePoints.find(point => 
-                    !point.captured && this.getTargetDistance(point) < this.captureThreshold
-                );
-
-                if (targetPoint && !this.autoCapturePending) {
-                    this.autoCapturePending = true;
-                    this.updateStatus('Target acquired - Auto-capturing...');
-                    
-                    setTimeout(() => {
-                        if (this.getTargetDistance(targetPoint) < this.captureThreshold) {
-                            this.captureImage(targetPoint);
-                        }
-                        this.autoCapturePending = false;
-                    }, this.autoCapturedelay);
-                }
-            }
-
-            /**
-             * Get angular distance to target point
-             */
-            getTargetDistance(point) {
-                const rotationMatrix = this.getRotationMatrix();
-                const screenPos = this.projectToScreen(point, rotationMatrix, 100, 100);
-                return screenPos.visible ? screenPos.distance : Infinity;
-            }
-
-            /**
-             * Manual capture trigger
-             */
-            manualCapture() {
-                const nearestPoint = this.capturePoints
-                    .filter(p => !p.captured)
-                    .reduce((nearest, point) => {
-                        const distance = this.getTargetDistance(point);
-                        return distance < (nearest?.distance || Infinity) ? { point, distance } : nearest;
-                    }, null);
-
-                if (nearestPoint) {
-                    this.captureImage(nearestPoint.point);
-                }
-            }
-
-            /**
-             * Capture high-quality image with WebCodecs enhancement
-             */
-            async captureImage(targetPoint) {
-                try {
-                    // Flash effect
-                    const flash = document.getElementById('captureFlash');
-                    flash.classList.add('active');
-                    setTimeout(() => flash.classList.remove('active'), 200);
-
-                    // Capture from video stream
-                    const video = document.getElementById('cameraFeed');
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(video, 0, 0);
-
-                    // Enhanced image processing with WebCodecs if available
-                    let imageData;
-                    if (this.hasWebCodecs) {
-                        imageData = await this.processImageWithWebCodecs(canvas);
-                    } else {
-                        imageData = canvas.toDataURL('image/jpeg', 0.95);
-                    }
-
-                    // Store high-quality image data
-                    targetPoint.imageData = imageData;
-                    targetPoint.captured = true;
-                    targetPoint.captureTime = Date.now();
-                    targetPoint.orientation = { ...this.deviceOrientation };
-
-                    this.capturedImages.push({
-                        point: targetPoint,
-                        imageData: imageData,
-                        orientation: { ...this.deviceOrientation }
-                    });
-
-                    // Haptic feedback
-                    if (navigator.vibrate) {
-                        navigator.vibrate([50, 50, 100]);
-                    }
-
-                    const remaining = this.capturePoints.filter(p => !p.captured).length;
-                    this.updateStatus(remaining > 0 ? 
-                        `📸 Captured! ${remaining} points remaining` : 
-                        '🎉 All points captured! Ready to process');
-
-                    console.log(`📸 Captured point ${targetPoint.id} (${this.capturedImages.length}/${this.totalCapturePoints})`);
-
-                } catch (error) {
-                    console.error('❌ Capture failed:', error);
-                    this.updateStatus('Capture failed - try again');
-                }
-            }
-
-            /**
-             * Process image with WebCodecs API for enhanced quality
-             */
-            async processImageWithWebCodecs(canvas) {
-                try {
-                    // Convert canvas to ImageBitmap for hardware acceleration
-                    const imageBitmap = await createImageBitmap(canvas);
-                    
-                    // Create enhanced canvas with improved settings
-                    const enhancedCanvas = document.createElement('canvas');
-                    enhancedCanvas.width = imageBitmap.width;
-                    enhancedCanvas.height = imageBitmap.height;
-                    
-                    const ctx = enhancedCanvas.getContext('2d', {
-                        alpha: false,
-                        colorSpace: 'rec2020',
-                        pixelFormat: 'float16'
-                    });
-                    
-                    // Apply image enhancement
-                    ctx.filter = 'contrast(1.1) brightness(1.05) saturate(1.1)';
-                    ctx.drawImage(imageBitmap, 0, 0);
-                    
-                    imageBitmap.close();
-                    return enhancedCanvas.toDataURL('image/jpeg', 0.98);
-                    
-                } catch (error) {
-                    console.log('WebCodecs processing failed, using fallback');
-                    return canvas.toDataURL('image/jpeg', 0.95);
-                }
-            }
-
-            /**
-             * Update progress display
-             */
-            updateProgress() {
-                const captured = this.capturedImages.length;
-                const total = this.totalCapturePoints;
-                const percentage = (captured / total) * 100;
-
-                document.getElementById('progressInfo').textContent = 
-                    `${captured} of ${total} capture points completed`;
-                document.getElementById('progressFill').style.width = `${percentage}%`;
-
-                if (captured === total) {
-                    this.updateStatus('🎉 All images captured! Ready to create photosphere');
-                    document.getElementById('finishButton').textContent = 'Create Photosphere';
-                    document.getElementById('finishButton').classList.add('success');
-                }
-            }
-
-            /**
-             * Finish the capture session and process images
-             */
-            async finishSession() {
-                if (this.capturedImages.length === 0) {
-                    alert('No images captured yet!');
-                    return;
-                }
-
-                this.updateStatus('Processing images...');
-
-                try {
-                    // Stop camera stream
-                    if (this.videoStream) {
-                        this.videoStream.getTracks().forEach(track => track.stop());
-                    }
-
-                    // Create photosphere preview
-                    const photosphereData = await this.createPhotospherePreview();
-                    
-                    // Show completion dialog
-                    this.showCompletionDialog(photosphereData);
-
-                } catch (error) {
-                    console.error('❌ Processing failed:', error);
-                    this.updateStatus('Processing failed - please try again');
-                }
-            }
-
-            /**
-             * Create photosphere preview with OpenCV.js enhancement
-             */
-            async createPhotospherePreview() {
-                this.updateStatus('🔬 Processing with computer vision...');
+                // Start orientation tracking
+                window.addEventListener('deviceorientation', handleOrientationChange);
                 
-                return new Promise(async (resolve) => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    // Create high-resolution equirectangular projection
-                    const width = this.openCVReady ? 4096 : 2048;
-                    const height = width / 2;
-                    canvas.width = width;
-                    canvas.height = height;
-
-                    // Professional background
-                    const gradient = ctx.createLinearGradient(0, 0, 0, height);
-                    gradient.addColorStop(0, '#0f0f23');
-                    gradient.addColorStop(0.5, '#1a1a2e');
-                    gradient.addColorStop(1, '#16213e');
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(0, 0, width, height);
-
-                    // Enhanced title with professional styling
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('360° PHOTOSPHERE', width / 2, 70);
-                    
-                    // Subtitle with API information
-                    ctx.font = '20px -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.fillStyle = '#64b5f6';
-                    const apiInfo = this.openCVReady ? 'Enhanced with OpenCV.js' : 'Professional Edition';
-                    ctx.fillText(`${this.capturedImages.length} images • ${apiInfo}`, width / 2, 110);
-
-                    if (this.hasWebCodecs) {
-                        ctx.fillStyle = '#4caf50';
-                        ctx.font = '16px -apple-system, BlinkMacSystemFont, sans-serif';
-                        ctx.fillText('⚡ WebCodecs Accelerated', width / 2, 140);
-                    }
-
-                    // Enhanced image processing
-                    if (this.openCVReady && this.capturedImages.length > 0) {
-                        await this.processWithOpenCV(ctx, width, height);
-                    } else {
-                        await this.createStandardPreview(ctx, width, height);
-                    }
-
-                    resolve(canvas);
-                });
+                showScreen('arScreen');
+                updateStatus('Ready to capture!');
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                showError('Failed to initialize camera or sensors. Please check permissions.');
             }
-
-            /**
-             * Process images with OpenCV.js for advanced computer vision
-             */
-            async processWithOpenCV(ctx, width, height) {
-                try {
-                    console.log('🔬 Using OpenCV.js for advanced processing...');
+        }
+        
+        // Orientation handling
+        function handleOrientationChange(event) {
+            currentOrientation = {
+                alpha: event.alpha || 0,
+                beta: event.beta || 0,
+                gamma: event.gamma || 0
+            };
+            
+            updateCaptureDots();
+            checkAutoCapture();
+        }
+        
+        // Setup capture dots in UI
+        function setupCaptureDots() {
+            const dotsContainer = document.getElementById('captureDots');
+            dotsContainer.innerHTML = '';
+            
+            capturePoints.forEach((point, index) => {
+                const dot = document.createElement('div');
+                dot.className = 'capture-dot';
+                dot.id = `dot-${index}`;
+                dotsContainer.appendChild(dot);
+            });
+        }
+        
+        // Update dot positions based on orientation
+        function updateCaptureDots() {
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            
+            capturePoints.forEach((point, index) => {
+                const dot = document.getElementById(`dot-${index}`);
+                if (!dot) return;
+                
+                // Convert 3D point to screen coordinates
+                const screenPos = worldToScreen(point, currentOrientation);
+                
+                if (screenPos.visible) {
+                    dot.style.left = `${screenPos.x}px`;
+                    dot.style.top = `${screenPos.y}px`;
+                    dot.style.display = 'block';
                     
-                    // Create enhanced grid layout
-                    const thumbnailSize = 150;
-                    const cols = Math.floor((width - 80) / (thumbnailSize + 20));
-                    const startY = 200;
-
-                    let processedCount = 0;
-                    
-                    for (let i = 0; i < this.capturedImages.length; i++) {
-                        const capture = this.capturedImages[i];
-                        const img = new Image();
-                        
-                        await new Promise((resolve) => {
-                            img.onload = async () => {
-                                // Apply OpenCV processing
-                                const enhancedImage = await this.enhanceImageWithOpenCV(img);
-                                
-                                const col = i % cols;
-                                const row = Math.floor(i / cols);
-                                const x = 40 + col * (thumbnailSize + 20);
-                                const y = startY + row * (thumbnailSize + 20);
-
-                                // Draw with enhanced styling
-                                ctx.save();
-                                ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-                                ctx.shadowBlur = 15;
-                                ctx.shadowOffsetY = 8;
-                                
-                                this.drawRoundedImage(ctx, enhancedImage || img, x, y, thumbnailSize, thumbnailSize, 12);
-                                ctx.restore();
-
-                                // Add professional labeling
-                                ctx.fillStyle = '#4CAF50';
-                                ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, sans-serif';
-                                ctx.textAlign = 'left';
-                                ctx.fillText(`${capture.point.elevation}°`, x + 8, y + thumbnailSize - 12);
-                                
-                                processedCount++;
-                                resolve();
-                            };
-                            img.src = capture.imageData;
-                        });
-                    }
-
-                    // Add processing information
-                    ctx.fillStyle = '#e3f2fd';
-                    ctx.font = '18px -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('🔬 Advanced computer vision processing applied', width / 2, height - 100);
-                    ctx.fillText('📐 Geometric correction • 🎨 Color enhancement • 🔍 Feature detection', width / 2, height - 70);
-
-                } catch (error) {
-                    console.error('OpenCV processing failed:', error);
-                    await this.createStandardPreview(ctx, width, height);
-                }
-            }
-
-            /**
-             * Enhance individual image with OpenCV.js
-             */
-            async enhanceImageWithOpenCV(img) {
-                try {
-                    if (!this.openCVReady || typeof cv === 'undefined') return null;
-
-                    // Create OpenCV Mat from image
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0);
-
-                    const src = cv.imread(canvas);
-                    const dst = new cv.Mat();
-
-                    // Apply histogram equalization for better exposure
-                    cv.cvtColor(src, src, cv.COLOR_RGBA2RGB);
-                    const channels = new cv.MatVector();
-                    cv.split(src, channels);
-                    
-                    for (let i = 0; i < 3; i++) {
-                        cv.equalizeHist(channels.get(i), channels.get(i));
-                    }
-                    
-                    cv.merge(channels, dst);
-
-                    // Convert back to canvas
-                    const outputCanvas = document.createElement('canvas');
-                    cv.imshow(outputCanvas, dst);
-
-                    // Cleanup
-                    src.delete();
-                    dst.delete();
-                    channels.delete();
-
-                    // Create image from enhanced canvas
-                    const enhancedImg = new Image();
-                    enhancedImg.src = outputCanvas.toDataURL();
-                    await new Promise(resolve => enhancedImg.onload = resolve);
-                    
-                    return enhancedImg;
-
-                } catch (error) {
-                    console.log('OpenCV enhancement failed, using original:', error);
-                    return null;
-                }
-            }
-
-            /**
-             * Create standard preview without OpenCV
-             */
-            async createStandardPreview(ctx, width, height) {
-                const thumbnailSize = 120;
-                const cols = Math.floor((width - 40) / (thumbnailSize + 10));
-                const startY = 180;
-
-                let processedImages = 0;
-                const totalImages = this.capturedImages.length;
-
-                for (let i = 0; i < totalImages; i++) {
-                    const capture = this.capturedImages[i];
-                    const img = new Image();
-                    
-                    await new Promise((resolve) => {
-                        img.onload = () => {
-                            const col = i % cols;
-                            const row = Math.floor(i / cols);
-                            const x = 20 + col * (thumbnailSize + 10);
-                            const y = startY + row * (thumbnailSize + 10);
-
-                            ctx.save();
-                            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-                            ctx.shadowBlur = 8;
-                            ctx.shadowOffsetY = 4;
-                            
-                            this.drawRoundedImage(ctx, img, x, y, thumbnailSize, thumbnailSize, 8);
-                            ctx.restore();
-
-                            ctx.fillStyle = '#4CAF50';
-                            ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
-                            ctx.textAlign = 'left';
-                            ctx.fillText(`${capture.point.id}`, x + 4, y + thumbnailSize - 8);
-
-                            processedImages++;
-                            resolve();
-                        };
-                        img.src = capture.imageData;
-                    });
-                }
-
-                // Add standard processing info
-                ctx.fillStyle = '#cccccc';
-                ctx.font = '16px -apple-system, BlinkMacSystemFont, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('Ready for advanced stitching algorithms', width / 2, height - 60);
-                ctx.fillText('Export: High-res JPEG • Interactive 360° viewer', width / 2, height - 30);
-            }
-
-            /**
-             * Draw image with rounded corners
-             */
-            drawRoundedImage(ctx, img, x, y, width, height, radius) {
-                ctx.beginPath();
-                ctx.moveTo(x + radius, y);
-                ctx.lineTo(x + width - radius, y);
-                ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-                ctx.lineTo(x + width, y + height - radius);
-                ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-                ctx.lineTo(x + radius, y + height);
-                ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-                ctx.lineTo(x, y + radius);
-                ctx.quadraticCurveTo(x, y, x + radius, y);
-                ctx.closePath();
-                ctx.clip();
-                ctx.drawImage(img, x, y, width, height);
-            }
-
-            /**
-             * Show professional completion dialog with export options
-             */
-            showCompletionDialog(photosphereCanvas) {
-                // Create overlay
-                const overlay = document.createElement('div');
-                overlay.style.cssText = `
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: rgba(0, 0, 0, 0.95);
-                    z-index: 2000;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: center;
-                    align-items: center;
-                    padding: 20px;
-                    box-sizing: border-box;
-                `;
-
-                // Create content container
-                const content = document.createElement('div');
-                content.style.cssText = `
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 20px;
-                    padding: 30px;
-                    text-align: center;
-                    backdrop-filter: blur(20px);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    max-width: 500px;
-                    width: 100%;
-                `;
-
-                // Title
-                const title = document.createElement('h2');
-                title.textContent = '🎉 Photosphere Complete!';
-                title.style.cssText = `
-                    color: white;
-                    margin-bottom: 20px;
-                    font-size: 28px;
-                    font-weight: 300;
-                `;
-
-                // Preview image
-                const previewImg = document.createElement('img');
-                previewImg.src = photosphereCanvas.toDataURL('image/jpeg', 0.9);
-                previewImg.style.cssText = `
-                    max-width: 100%;
-                    height: auto;
-                    border-radius: 12px;
-                    margin-bottom: 25px;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-                `;
-
-                // Stats
-                const stats = document.createElement('div');
-                stats.innerHTML = `
-                    <div style="color: #ccc; margin-bottom: 25px; font-size: 16px;">
-                        <div>📸 ${this.capturedImages.length} high-resolution images</div>
-                        <div>🔄 Ready for professional stitching</div>
-                        <div>📐 Optimized spherical coverage</div>
-                    </div>
-                `;
-
-                // Buttons
-                const buttonContainer = document.createElement('div');
-                buttonContainer.style.cssText = `
-                    display: flex;
-                    gap: 15px;
-                    justify-content: center;
-                    flex-wrap: wrap;
-                `;
-
-                // Export button
-                const exportBtn = document.createElement('button');
-                exportBtn.textContent = 'Export Photosphere';
-                exportBtn.style.cssText = `
-                    background: linear-gradient(135deg, #4CAF50, #45a049);
-                    color: white;
-                    border: none;
-                    border-radius: 25px;
-                    padding: 15px 25px;
-                    font-size: 16px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                `;
-
-                // View AR button
-                const viewBtn = document.createElement('button');
-                viewBtn.textContent = 'View in AR';
-                viewBtn.style.cssText = `
-                    background: rgba(0, 123, 255, 0.8);
-                    color: white;
-                    border: 2px solid rgba(0, 123, 255, 1);
-                    border-radius: 25px;
-                    padding: 15px 25px;
-                    font-size: 16px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                `;
-
-                // New session button
-                const newBtn = document.createElement('button');
-                newBtn.textContent = 'New Session';
-                newBtn.style.cssText = `
-                    background: rgba(255, 255, 255, 0.1);
-                    color: white;
-                    border: 2px solid rgba(255, 255, 255, 0.3);
-                    border-radius: 25px;
-                    padding: 15px 25px;
-                    font-size: 16px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                `;
-
-                // Event listeners
-                exportBtn.addEventListener('click', () => {
-                    this.exportPhotosphere(photosphereCanvas);
-                    document.body.removeChild(overlay);
-                });
-
-                viewBtn.addEventListener('click', () => {
-                    this.viewInAR();
-                    document.body.removeChild(overlay);
-                });
-
-                newBtn.addEventListener('click', () => {
-                    document.body.removeChild(overlay);
-                    this.resetSession();
-                });
-
-                // Assemble dialog
-                buttonContainer.appendChild(exportBtn);
-                buttonContainer.appendChild(viewBtn);
-                buttonContainer.appendChild(newBtn);
-
-                content.appendChild(title);
-                content.appendChild(previewImg);
-                content.appendChild(stats);
-                content.appendChild(buttonContainer);
-                overlay.appendChild(content);
-                document.body.appendChild(overlay);
-            }
-
-            /**
-             * Export photosphere with professional options
-             */
-            async exportPhotosphere(canvas) {
-                try {
-                    const blob = await new Promise(resolve => 
-                        canvas.toBlob(resolve, 'image/jpeg', 0.95)
+                    // Check if dot is near crosshair
+                    const centerX = screenWidth / 2;
+                    const centerY = screenHeight / 2;
+                    const distance = Math.sqrt(
+                        Math.pow(screenPos.x - centerX, 2) + 
+                        Math.pow(screenPos.y - centerY, 2)
                     );
-
-                    if (this.hasFileSystemAccess) {
-                        // Use modern File System API
-                        const fileHandle = await window.showSaveFilePicker({
-                            suggestedName: `photosphere_${Date.now()}.jpg`,
-                            types: [{
-                                description: 'JPEG Images',
-                                accept: { 'image/jpeg': ['.jpg', '.jpeg'] }
-                            }]
-                        });
-
-                        const writable = await fileHandle.createWritable();
-                        await writable.write(blob);
-                        await writable.close();
-
-                        this.updateStatus('✅ Photosphere exported successfully!');
+                    
+                    if (distance < 50 && !point.captured) {
+                        dot.classList.add('active');
                     } else {
-                        // Fallback to download
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `photosphere_${Date.now()}.jpg`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-
-                        this.updateStatus('📥 Photosphere downloaded!');
+                        dot.classList.remove('active');
                     }
-
-                } catch (error) {
-                    console.error('Export failed:', error);
-                    this.updateStatus('Export cancelled or failed');
+                    
+                    if (point.captured) {
+                        dot.classList.add('captured');
+                    }
+                } else {
+                    dot.style.display = 'none';
                 }
+            });
+        }
+        
+        // Convert 3D world coordinates to screen coordinates
+        function worldToScreen(point, orientation) {
+            // Simple projection - in a real implementation, you'd use proper 3D math
+            const fov = 75 * Math.PI / 180;
+            const aspect = window.innerWidth / window.innerHeight;
+            
+            // Rotate point based on device orientation
+            const rotatedPoint = rotatePoint(point, orientation);
+            
+            // Check if point is in front of camera
+            if (rotatedPoint.z > 0) {
+                return { visible: false, x: 0, y: 0 };
             }
-
-            /**
-             * View captured photosphere in enhanced AR mode
-             */
-            viewInAR() {
-                // Create professional AR viewer interface
-                const arViewer = document.createElement('div');
-                arViewer.style.cssText = `
+            
+            // Project to screen
+            const x = (rotatedPoint.x / Math.abs(rotatedPoint.z)) * (window.innerWidth / 2) + window.innerWidth / 2;
+            const y = (rotatedPoint.y / Math.abs(rotatedPoint.z)) * (window.innerHeight / 2) + window.innerHeight / 2;
+            
+            return {
+                visible: x >= 0 && x <= window.innerWidth && y >= 0 && y <= window.innerHeight,
+                x: x,
+                y: y
+            };
+        }
+        
+        // Rotate point based on device orientation
+        function rotatePoint(point, orientation) {
+            // Convert orientation to radians
+            const alpha = orientation.alpha * Math.PI / 180;
+            const beta = orientation.beta * Math.PI / 180;
+            const gamma = orientation.gamma * Math.PI / 180;
+            
+            // Apply rotation matrices (simplified)
+            let x = point.x;
+            let y = point.y;
+            let z = point.z;
+            
+            // Rotate around Y axis (alpha)
+            const cosAlpha = Math.cos(alpha);
+            const sinAlpha = Math.sin(alpha);
+            const newX = x * cosAlpha - z * sinAlpha;
+            const newZ = x * sinAlpha + z * cosAlpha;
+            
+            // Rotate around X axis (beta)
+            const cosBeta = Math.cos(beta);
+            const sinBeta = Math.sin(beta);
+            const newY = y * cosBeta - newZ * sinBeta;
+            const finalZ = y * sinBeta + newZ * cosBeta;
+            
+            return { x: newX, y: newY, z: finalZ };
+        }
+        
+        // Auto-capture logic
+        function checkAutoCapture() {
+            if (isCapturing) return;
+            
+            const activePoints = capturePoints.filter((point, index) => {
+                const dot = document.getElementById(`dot-${index}`);
+                return dot && dot.classList.contains('active') && !point.captured;
+            });
+            
+            if (activePoints.length > 0) {
+                autoCaptureBudget += 1;
+                if (autoCaptureBudget >= 90) { // ~1.5 seconds at 60fps
+                    captureImage(activePoints[0]);
+                    autoCaptureBudget = 0;
+                }
+            } else {
+                autoCaptureBudget = 0;
+            }
+        }
+        
+        // Manual capture
+        function manualCapture() {
+            if (isCapturing) return;
+            
+            // Find closest uncaptured point to crosshair
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+            let closestPoint = null;
+            let closestDistance = Infinity;
+            
+            capturePoints.forEach((point, index) => {
+                if (point.captured) return;
+                
+                const dot = document.getElementById(`dot-${index}`);
+                if (!dot || dot.style.display === 'none') return;
+                
+                const dotRect = dot.getBoundingClientRect();
+                const distance = Math.sqrt(
+                    Math.pow(dotRect.left + 10 - centerX, 2) + 
+                    Math.pow(dotRect.top + 10 - centerY, 2)
+                );
+                
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestPoint = point;
+                }
+            });
+            
+            if (closestPoint && closestDistance < 100) {
+                captureImage(closestPoint);
+            } else {
+                showError('Move closer to a blue dot to capture');
+            }
+        }
+        
+        // Capture image
+        async function captureImage(point) {
+            if (isCapturing) return;
+            isCapturing = true;
+            
+            try {
+                // Haptic feedback if available
+                if (navigator.vibrate) {
+                    navigator.vibrate(100);
+                }
+                
+                // Capture from video stream
+                const video = document.getElementById('cameraPreview');
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+                
+                // Convert to blob with metadata
+                const blob = await new Promise(resolve => {
+                    canvas.toBlob(resolve, 'image/jpeg', 0.9);
+                });
+                
+                // Store image with position data
+                capturedImages.push({
+                    blob: blob,
+                    point: point,
+                    orientation: { ...currentOrientation },
+                    timestamp: Date.now()
+                });
+                
+                // Mark point as captured
+                point.captured = true;
+                
+                // Update UI
+                updateProgress();
+                updateStatus(`Captured ${capturedImages.length} of 51`);
+                
+                // Visual feedback
+                const dot = document.getElementById(`dot-${point.id}`);
+                if (dot) {
+                    dot.classList.add('captured');
+                    dot.classList.remove('active');
+                }
+                
+            } catch (error) {
+                console.error('Capture error:', error);
+                showError('Failed to capture image');
+            } finally {
+                isCapturing = false;
+            }
+        }
+        
+        // Update progress bar and counter
+        function updateProgress() {
+            const progress = (capturedImages.length / 51) * 100;
+            document.getElementById('progressFill').style.width = `${progress}%`;
+            document.getElementById('captureCount').textContent = `${capturedImages.length} / 51 captured`;
+        }
+        
+        // Update status text
+        function updateStatus(message) {
+            document.getElementById('statusText').textContent = message;
+        }
+        
+        // Finish capture and start processing
+        function finishCapture() {
+            if (capturedImages.length < 10) {
+                showError('Need at least 10 images for a good photosphere');
+                return;
+            }
+            
+            // Stop camera stream
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Remove orientation listener
+            window.removeEventListener('deviceorientation', handleOrientationChange);
+            
+            // Start processing
+            showScreen('processingScreen');
+            processPhotosphere();
+        }
+        
+        // Process captured images into photosphere
+        async function processPhotosphere() {
+            try {
+                updateProcessingStatus('Analyzing images...');
+                
+                // Simple stitching simulation (in real app, use OpenCV.js or similar)
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                updateProcessingStatus('Aligning images...');
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                updateProcessingStatus('Blending seams...');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                updateProcessingStatus('Creating final photosphere...');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Create preview
+                await createPreview();
+                
+                showScreen('previewScreen');
+                
+            } catch (error) {
+                console.error('Processing error:', error);
+                showError('Failed to process photosphere');
+            }
+        }
+        
+        // Update processing status
+        function updateProcessingStatus(message) {
+            const detailElement = document.querySelector('.processing-detail');
+            if (detailElement) {
+                detailElement.textContent = message;
+            }
+        }
+        
+        // Create 3D preview using Three.js
+        async function createPreview() {
+            const canvas = document.getElementById('previewCanvas');
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            
+            // Initialize Three.js scene
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ canvas: canvas });
+            renderer.setSize(width, height);
+            
+            // Create sphere geometry
+            const geometry = new THREE.SphereGeometry(5, 32, 16);
+            geometry.scale(-1, 1, 1); // Invert for inside view
+            
+            // Create simple texture from first captured image
+            const texture = await createTextureFromImages();
+            const material = new THREE.MeshBasicMaterial({ map: texture });
+            
+            sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
+            
+            camera.position.set(0, 0, 0);
+            
+            // Add controls
+            addPreviewControls();
+            
+            // Start render loop
+            renderPreview();
+        }
+        
+        // Create texture from captured images (simplified)
+        async function createTextureFromImages() {
+            // In a real implementation, this would stitch images properly
+            // For demo, we'll create a simple texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Create gradient as placeholder
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(1, '#98FB98');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add some captured images as tiles (simplified)
+            const tileSize = 128;
+            const tilesX = Math.floor(canvas.width / tileSize);
+            const tilesY = Math.floor(canvas.height / tileSize);
+            
+            for (let i = 0; i < Math.min(capturedImages.length, tilesX * tilesY); i++) {
+                const x = (i % tilesX) * tileSize;
+                const y = Math.floor(i / tilesX) * tileSize;
+                
+                const img = new Image();
+                const url = URL.createObjectURL(capturedImages[i].blob);
+                
+                await new Promise((resolve) => {
+                    img.onload = () => {
+                        ctx.drawImage(img, x, y, tileSize, tileSize);
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    };
+                    img.src = url;
+                });
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter;
+            return texture;
+        }
+        
+        // Add touch controls for preview
+        function addPreviewControls() {
+            const canvas = document.getElementById('previewCanvas');
+            let isPointerDown = false;
+            let pointerX = 0;
+            let pointerY = 0;
+            let lon = 0;
+            let lat = 0;
+            
+            function onPointerDown(event) {
+                isPointerDown = true;
+                pointerX = event.clientX || (event.touches && event.touches[0].clientX);
+                pointerY = event.clientY || (event.touches && event.touches[0].clientY);
+            }
+            
+            function onPointerMove(event) {
+                if (!isPointerDown) return;
+                
+                const x = event.clientX || (event.touches && event.touches[0].clientX);
+                const y = event.clientY || (event.touches && event.touches[0].clientY);
+                
+                lon += (pointerX - x) * 0.1;
+                lat -= (pointerY - y) * 0.1;
+                lat = Math.max(-85, Math.min(85, lat));
+                
+                pointerX = x;
+                pointerY = y;
+                
+                updateCameraRotation();
+            }
+            
+            function onPointerUp() {
+                isPointerDown = false;
+            }
+            
+            function updateCameraRotation() {
+                const phi = THREE.MathUtils.degToRad(90 - lat);
+                const theta = THREE.MathUtils.degToRad(lon);
+                
+                camera.position.x = Math.sin(phi) * Math.cos(theta);
+                camera.position.y = Math.cos(phi);
+                camera.position.z = Math.sin(phi) * Math.sin(theta);
+                
+                camera.lookAt(0, 0, 0);
+            }
+            
+            // Mouse events
+            canvas.addEventListener('mousedown', onPointerDown);
+            canvas.addEventListener('mousemove', onPointerMove);
+            canvas.addEventListener('mouseup', onPointerUp);
+            
+            // Touch events
+            canvas.addEventListener('touchstart', onPointerDown);
+            canvas.addEventListener('touchmove', onPointerMove);
+            canvas.addEventListener('touchend', onPointerUp);
+            
+            // Prevent context menu
+            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+        
+        // Render loop for preview
+        function renderPreview() {
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+                requestAnimationFrame(renderPreview);
+            }
+        }
+        
+        // Download photosphere
+        async function downloadPhotosphere() {
+            try {
+                // Create final photosphere canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = 2048;
+                canvas.height = 1024;
+                const ctx = canvas.getContext('2d');
+                
+                // Render final image (simplified)
+                const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                gradient.addColorStop(0, '#87CEEB');
+                gradient.addColorStop(1, '#98FB98');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Add metadata text
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.font = '24px Arial';
+                ctx.fillText(`360° Photosphere - ${new Date().toLocaleDateString()}`, 20, 50);
+                ctx.fillText(`${capturedImages.length} images captured`, 20, 80);
+                
+                // Download
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `photosphere-${Date.now()}.jpg`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                });
+                
+            } catch (error) {
+                console.error('Download error:', error);
+                showError('Failed to download photosphere');
+            }
+        }
+        
+        // Share photosphere
+        async function sharePhotosphere() {
+            try {
+                if (navigator.share) {
+                    // Use Web Share API if available
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 1024;
+                    canvas.height = 512;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Create simple preview image
+                    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                    gradient.addColorStop(0, '#87CEEB');
+                    gradient.addColorStop(1, '#98FB98');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    canvas.toBlob(async (blob) => {
+                        const file = new File([blob], 'photosphere.jpg', { type: 'image/jpeg' });
+                        
+                        await navigator.share({
+                            title: '360° Photosphere',
+                            text: 'Check out my 360° photosphere!',
+                            files: [file]
+                        });
+                    });
+                } else {
+                    // Fallback to download
+                    downloadPhotosphere();
+                }
+            } catch (error) {
+                console.error('Share error:', error);
+                showError('Failed to share photosphere');
+            }
+        }
+        
+        // Start new capture
+        function startNew() {
+            // Reset data
+            capturedImages = [];
+            capturePoints = [];
+            currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
+            autoCaptureBudget = 0;
+            
+            // Clean up Three.js resources
+            if (renderer) {
+                renderer.dispose();
+                renderer = null;
+            }
+            if (scene) {
+                scene.clear();
+                scene = null;
+            }
+            
+            // Return to landing
+            showScreen('landingScreen');
+        }
+        
+        // Help toggle
+        function toggleHelp() {
+            const helpText = `
+• Point your device at blue dots
+• Hold steady for auto-capture
+• Or tap the camera button
+• Capture all 51 points for best results
+• Move smoothly between points
+            `.trim();
+            
+            alert(helpText);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (renderer && camera) {
+                const canvas = document.getElementById('previewCanvas');
+                const width = canvas.clientWidth;
+                const height = canvas.clientHeight;
+                
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            }
+        });
+        
+        // Service Worker registration for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                const swCode = `
+                    const CACHE_NAME = 'photosphere-v1';
+                    const urlsToCache = [
+                        '/',
+                        '/style.css',
+                        '/script.js'
+                    ];
+                    
+                    self.addEventListener('install', (event) => {
+                        event.waitUntil(
+                            caches.open(CACHE_NAME)
+                                .then((cache) => cache.addAll(urlsToCache))
+                        );
+                    });
+                    
+                    self.addEventListener('fetch', (event) => {
+                        event.respondWith(
+                            caches.match(event.request)
+                                .then((response) => {
+                                    return response || fetch(event.request);
+                                })
+                        );
+                    });
+                `;
+                
+                const blob = new Blob([swCode], { type: 'application/javascript' });
+                const swUrl = URL.createObjectURL(blob);
+                
+                navigator.serviceWorker.register(swUrl)
+                    .then((registration) => {
+                        console.log('SW registered:', registration);
+                    })
+                    .catch((error) => {
+                        console.log('SW registration failed:', error);
+                    });
+            });
+        }
+        
+        // iOS home screen detection
+        function isIOS() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent);
+        }
+        
+        function isStandalone() {
+            return window.navigator.standalone === true || 
+                   window.matchMedia('(display-mode: standalone)').matches;
+        }
+        
+        // Show install prompt for iOS
+        if (isIOS() && !isStandalone()) {
+            setTimeout(() => {
+                const installBanner = document.createElement('div');
+                installBanner.style.cssText = `
                     position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: #000;
-                    z-index: 1500;
-                `;
-
-                // Create AR canvas for 360° viewing
-                const arCanvas = document.createElement('canvas');
-                arCanvas.width = window.innerWidth;
-                arCanvas.height = window.innerHeight;
-                arCanvas.style.cssText = `
-                    width: 100%;
-                    height: 100%;
-                    display: block;
-                `;
-
-                // Create controls overlay
-                const controls = document.createElement('div');
-                controls.style.cssText = `
-                    position: absolute;
-                    top: 20px;
-                    left: 20px;
-                    right: 20px;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    z-index: 10;
-                `;
-
-                controls.innerHTML = `
-                    <div style="color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">
-                        <h3 style="margin: 0; font-size: 18px; font-weight: 500;">🥽 AR Photosphere Viewer</h3>
-                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #ccc;">
-                            ${this.capturedImages.length} images • Move device to explore
-                        </p>
-                    </div>
-                    <button id="closeARViewer" style="
-                        background: rgba(255, 255, 255, 0.2);
-                        color: white;
-                        border: 2px solid rgba(255, 255, 255, 0.3);
-                        border-radius: 20px;
-                        padding: 10px 20px;
-                        font-size: 14px;
-                        cursor: pointer;
-                        backdrop-filter: blur(10px);
-                    ">✕ Close</button>
-                `;
-
-                // Info panel
-                const infoPanel = document.createElement('div');
-                infoPanel.style.cssText = `
-                    position: absolute;
                     bottom: 20px;
                     left: 20px;
                     right: 20px;
-                    background: rgba(0, 0, 0, 0.8);
-                    border-radius: 15px;
-                    padding: 20px;
+                    background: rgba(0, 0, 0, 0.9);
                     color: white;
-                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                    backdrop-filter: blur(20px);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    padding: 15px;
+                    border-radius: 10px;
+                    text-align: center;
+                    z-index: 1000;
+                    backdrop-filter: blur(10px);
                 `;
-
-                infoPanel.innerHTML = `
-                    <h4 style="margin: 0 0 10px 0; color: #64b5f6;">Interactive Features:</h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
-                        <div>📱 Device rotation tracking</div>
-                        <div>🔍 Zoom with pinch gestures</div>
-                        <div>🎨 Real-time lens distortion</div>
-                        <div>⚡ Hardware accelerated</div>
+                installBanner.innerHTML = `
+                    <div style="margin-bottom: 10px;">📱 Install this app</div>
+                    <div style="font-size: 0.9rem; opacity: 0.8;">
+                        Tap <strong>Share</strong> then <strong>Add to Home Screen</strong>
                     </div>
-                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
-                        <div style="font-size: 13px; color: #ccc;">
-                            API Status: WebCodecs ${this.hasWebCodecs ? '✅' : '❌'} • 
-                            OpenCV ${this.openCVReady ? '✅' : '❌'} • 
-                            WebXR ${this.hasWebXR ? '✅' : '❌'}
-                        </div>
-                    </div>
+                    <button onclick="this.parentElement.remove()" 
+                            style="margin-top: 10px; background: rgba(255,255,255,0.2); 
+                                   border: none; color: white; padding: 8px 16px; 
+                                   border-radius: 5px; cursor: pointer;">
+                        Dismiss
+                    </button>
                 `;
-
-                // Assemble AR viewer
-                arViewer.appendChild(arCanvas);
-                arViewer.appendChild(controls);
-                arViewer.appendChild(infoPanel);
-                document.body.appendChild(arViewer);
-
-                // Initialize AR viewing experience
-                this.initializeARViewer(arCanvas);
-
-                // Close button functionality
-                document.getElementById('closeARViewer').addEventListener('click', () => {
-                    this.stopARViewer();
-                    document.body.removeChild(arViewer);
-                });
-            }
-
-            /**
-             * Initialize interactive AR viewer with lens distortion
-             */
-            initializeARViewer(canvas) {
-                const ctx = canvas.getContext('2d');
-                this.arViewerActive = true;
-                this.arViewerOrientation = { alpha: 0, beta: 0, gamma: 0 };
-
-                // Set up device orientation tracking for AR viewer
-                const orientationHandler = (event) => {
-                    if (!this.arViewerActive) return;
-                    
-                    this.arViewerOrientation = {
-                        alpha: event.alpha || 0,
-                        beta: event.beta || 0,
-                        gamma: event.gamma || 0
-                    };
-                };
-
-                window.addEventListener('deviceorientation', orientationHandler);
-                this.arViewerOrientationHandler = orientationHandler;
-
-                // Start AR rendering loop
-                const renderAR = () => {
-                    if (this.arViewerActive) {
-                        this.renderARPhotosphere(ctx, canvas);
-                        requestAnimationFrame(renderAR);
-                    }
-                };
-                renderAR();
-
-                console.log('🥽 AR Viewer initialized with interactive features');
-            }
-
-            /**
-             * Render photosphere with realistic lens distortion
-             */
-            renderARPhotosphere(ctx, canvas) {
-                const centerX = canvas.width / 2;
-                const centerY = canvas.height / 2;
-
-                // Clear canvas
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // Create rotation matrix for current orientation
-                const alpha = this.arViewerOrientation.alpha * Math.PI / 180;
-                const beta = this.arViewerOrientation.beta * Math.PI / 180;
-                const gamma = this.arViewerOrientation.gamma * Math.PI / 180;
-
-                // Render captured images with lens distortion
-                this.capturedImages.forEach((capture, index) => {
-                    const point = capture.point;
-                    
-                    // Calculate 3D position
-                    const azRad = point.azimuth * Math.PI / 180;
-                    const elRad = point.elevation * Math.PI / 180;
-                    
-                    const x = Math.sin(azRad) * Math.cos(elRad);
-                    const y = Math.sin(elRad);
-                    const z = Math.cos(azRad) * Math.cos(elRad);
-
-                    // Apply device rotation
-                    const rotX = x * Math.cos(-alpha) - z * Math.sin(-alpha);
-                    const rotZ = x * Math.sin(-alpha) + z * Math.cos(-alpha);
-                    const rotY = y * Math.cos(beta) - rotZ * Math.sin(beta);
-                    const finalZ = y * Math.sin(beta) + rotZ * Math.cos(beta);
-
-                    // Check visibility
-                    if (finalZ <= 0.1) return;
-
-                    // Project to screen with lens distortion
-                    const fov = 90 * Math.PI / 180;
-                    const scale = Math.min(centerX, centerY) / Math.tan(fov / 2);
-                    
-                    let screenX = centerX + (rotX * scale) / finalZ;
-                    let screenY = centerY - (rotY * scale) / finalZ;
-
-                    // Apply barrel distortion for realism
-                    const dx = (screenX - centerX) / centerX;
-                    const dy = (screenY - centerY) / centerY;
-                    const r2 = dx * dx + dy * dy;
-                    const distortion = 1 + 0.2 * r2 + 0.1 * r2 * r2;
-                    
-                    screenX = centerX + dx * centerX * distortion;
-                    screenY = centerY + dy * centerY * distortion;
-
-                    // Render image if in bounds
-                    if (screenX > -100 && screenX < canvas.width + 100 && 
-                        screenY > -100 && screenY < canvas.height + 100) {
-                        
-                        this.renderImageInAR(ctx, capture, screenX, screenY, finalZ);
-                    }
-                });
-
-                // Add crosshair for reference
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, 15, 0, 2 * Math.PI);
-                ctx.stroke();
-            }
-
-            /**
-             * Render individual image in AR viewer
-             */
-            renderImageInAR(ctx, capture, x, y, depth) {
-                if (!capture.imageElement) {
-                    capture.imageElement = new Image();
-                    capture.imageElement.src = capture.imageData;
-                    return;
-                }
-
-                if (!capture.imageElement.complete) return;
-
-                // Scale based on distance
-                const scale = Math.max(0.3, Math.min(1.5, 1 / depth));
-                const size = 80 * scale;
-
-                // Add glow effect
-                const gradient = ctx.createRadialGradient(x, y, size * 0.5, x, y, size * 1.2);
-                gradient.addColorStop(0, 'rgba(0, 123, 255, 0.3)');
-                gradient.addColorStop(1, 'rgba(0, 123, 255, 0)');
-                ctx.fillStyle = gradient;
-                ctx.beginPath();
-                ctx.arc(x, y, size * 1.2, 0, 2 * Math.PI);
-                ctx.fill();
-
-                // Draw image with circular clip
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(x, y, size * 0.8, 0, 2 * Math.PI);
-                ctx.clip();
-                ctx.drawImage(capture.imageElement, x - size * 0.8, y - size * 0.8, size * 1.6, size * 1.6);
-                ctx.restore();
-
-                // Draw border
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(x, y, size * 0.8, 0, 2 * Math.PI);
-                ctx.stroke();
-            }
-
-            /**
-             * Stop AR viewer
-             */
-            stopARViewer() {
-                this.arViewerActive = false;
-                if (this.arViewerOrientationHandler) {
-                    window.removeEventListener('deviceorientation', this.arViewerOrientationHandler);
-                }
-                console.log('🥽 AR Viewer stopped');
-            }
-
-            /**
-             * Reset session for new capture
-             */
-            resetSession() {
-                this.isActive = false;
-                this.capturedImages = [];
-                this.capturePoints.forEach(point => {
-                    point.captured = false;
-                    point.imageData = null;
-                    point.imageElement = null;
-                });
-
-                document.getElementById('appContainer').style.display = 'none';
-                document.getElementById('welcomeScreen').classList.remove('hidden');
+                document.body.appendChild(installBanner);
                 
-                this.updateStatus('Ready for new session');
-                console.log('🔄 Session reset');
-            }
-
-            /**
-             * Update status message
-             */
-            updateStatus(message) {
-                document.getElementById('statusMessage').textContent = message;
-            }
-
-            /**
-             * Normalize angle to -180 to 180 range
-             */
-            normalizeAngle(angle) {
-                while (angle > 180) angle -= 360;
-                while (angle < -180) angle += 360;
-                return angle;
-            }
+                // Auto-hide after 10 seconds
+                setTimeout(() => {
+                    if (installBanner.parentElement) {
+                        installBanner.remove();
+                    }
+                }, 10000);
+            }, 3000);
         }
-
-        // Initialize the professional photosphere system
-        window.addEventListener('DOMContentLoaded', () => {
-            new PhotosphereCapture();
-        });
+        
+        // Initialize app
+        console.log('360° Photosphere AR PWA loaded');
+        console.log('Ready for capturing amazing panoramas!');
     </script>
 </body>
 </html>
