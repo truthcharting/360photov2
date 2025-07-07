@@ -477,31 +477,36 @@
         let autoCaptureCooldown = false;
         let photosphereViewer = null;
 
-        // Generate 51 capture points distributed evenly on a sphere
+        // Generate 51 capture points distributed evenly on a sphere (improved distribution)
         function generateCapturePoints() {
             const points = [];
-            const rings = 7; // Number of horizontal rings
-            const pointsPerRing = [1, 6, 8, 10, 8, 6, 1]; // Points per ring for good distribution
             
-            let pointIndex = 0;
+            // Use Fibonacci sphere distribution for more even spacing
+            const numPoints = 51;
+            const goldenRatio = (1 + Math.sqrt(5)) / 2;
             
-            for (let ring = 0; ring < rings; ring++) {
-                const ringPoints = pointsPerRing[ring];
-                const latitude = (ring - 3) * 30; // -90 to +90 degrees
+            for (let i = 0; i < numPoints; i++) {
+                // Fibonacci sphere algorithm
+                const theta = 2 * Math.PI * i / goldenRatio;
+                const phi = Math.acos(1 - 2 * (i + 0.5) / numPoints);
                 
-                for (let point = 0; point < ringPoints; point++) {
-                    const longitude = (point / ringPoints) * 360;
-                    points.push({
-                        id: pointIndex++,
-                        lat: latitude,
-                        lon: longitude,
-                        captured: false,
-                        image: null
-                    });
-                }
+                // Convert to latitude/longitude
+                const lat = 90 - (phi * 180 / Math.PI); // -90 to +90
+                let lon = theta * 180 / Math.PI; // 0 to 360
+                
+                // Normalize longitude to -180 to +180
+                if (lon > 180) lon -= 360;
+                
+                points.push({
+                    id: i,
+                    lat: lat,
+                    lon: lon,
+                    captured: false,
+                    image: null
+                });
             }
             
-            return points.slice(0, 51); // Ensure exactly 51 points
+            return points;
         }
 
         // Initialize capture points
@@ -510,74 +515,155 @@
             console.log(`Generated ${capturePoints.length} capture points`);
         }
 
-        // Convert spherical coordinates to screen position
+        // Convert spherical coordinates to screen position with proper 3D math
         function sphericalToScreen(lat, lon, deviceOrientation) {
             const canvas = document.getElementById('arOverlay');
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
             
-            // Adjust for device orientation
-            const adjustedLon = lon - deviceOrientation.alpha;
-            const adjustedLat = lat + deviceOrientation.beta;
+            // Convert degrees to radians
+            const latRad = lat * Math.PI / 180;
+            const lonRad = lon * Math.PI / 180;
             
-            // Simple projection (can be improved with proper spherical projection)
-            const x = centerX + (adjustedLon / 180) * (canvas.width / 4);
-            const y = centerY - (adjustedLat / 90) * (canvas.height / 4);
+            // Device orientation in radians (normalize alpha to 0-360 range)
+            let alpha = deviceOrientation.alpha || 0;
+            if (alpha < 0) alpha += 360;
+            const alphaRad = alpha * Math.PI / 180;
+            const betaRad = -deviceOrientation.beta * Math.PI / 180; // Invert beta
+            const gammaRad = deviceOrientation.gamma * Math.PI / 180;
             
-            return { x, y };
+            // Convert spherical coordinates to 3D Cartesian coordinates
+            // Standard spherical coordinate system: x=right, y=up, z=forward
+            let x = Math.cos(latRad) * Math.sin(lonRad);
+            let y = Math.sin(latRad);
+            let z = Math.cos(latRad) * Math.cos(lonRad);
+            
+            // Apply device rotation transformations in correct order
+            // First apply alpha rotation (yaw - rotation around Y axis)
+            let x1 = x * Math.cos(alphaRad) - z * Math.sin(alphaRad);
+            let y1 = y;
+            let z1 = x * Math.sin(alphaRad) + z * Math.cos(alphaRad);
+            
+            // Then apply beta rotation (pitch - rotation around X axis)
+            let x2 = x1;
+            let y2 = y1 * Math.cos(betaRad) - z1 * Math.sin(betaRad);
+            let z2 = y1 * Math.sin(betaRad) + z1 * Math.cos(betaRad);
+            
+            // Finally apply gamma rotation (roll - rotation around Z axis)
+            let x3 = x2 * Math.cos(gammaRad) - y2 * Math.sin(gammaRad);
+            let y3 = x2 * Math.sin(gammaRad) + y2 * Math.cos(gammaRad);
+            let z3 = z2;
+            
+            // Check if point is behind camera (z < 0)
+            if (z3 <= 0) {
+                return { x: -1000, y: -1000, visible: false }; // Off-screen
+            }
+            
+            // Project 3D point to 2D screen using perspective projection
+            const fov = 60 * Math.PI / 180; // 60 degree field of view
+            const focal = Math.min(canvas.width, canvas.height) / (2 * Math.tan(fov / 2));
+            
+            const screenX = centerX + (x3 / z3) * focal;
+            const screenY = centerY - (y3 / z3) * focal; // Invert Y for screen coordinates
+            
+            return { 
+                x: screenX, 
+                y: screenY, 
+                visible: true,
+                distance: z3 // For depth sorting
+            };
         }
 
-        // Draw AR overlay
+        // Draw AR overlay with proper 3D positioning
         function drawAROverlay() {
             if (!arContext) return;
             
             const canvas = arContext.canvas;
             arContext.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Draw capture points
+            // Sort points by distance for proper rendering order
+            const visiblePoints = [];
+            
             capturePoints.forEach((point, index) => {
                 const screenPos = sphericalToScreen(point.lat, point.lon, orientationData);
                 
-                // Only draw points that are reasonably on screen
-                if (screenPos.x > -50 && screenPos.x < canvas.width + 50 && 
-                    screenPos.y > -50 && screenPos.y < canvas.height + 50) {
+                if (screenPos.visible && 
+                    screenPos.x > -100 && screenPos.x < canvas.width + 100 && 
+                    screenPos.y > -100 && screenPos.y < canvas.height + 100) {
                     
-                    arContext.beginPath();
-                    arContext.arc(screenPos.x, screenPos.y, 15, 0, 2 * Math.PI);
-                    
-                    if (point.captured) {
-                        arContext.fillStyle = '#4CAF50';
-                    } else if (index === currentTargetIndex) {
-                        arContext.fillStyle = '#FF9800';
-                        arContext.shadowBlur = 20;
-                        arContext.shadowColor = '#FF9800';
-                    } else {
-                        arContext.fillStyle = '#2196F3';
-                    }
-                    
-                    arContext.fill();
-                    arContext.shadowBlur = 0;
-                    
-                    // Draw border
-                    arContext.strokeStyle = 'white';
-                    arContext.lineWidth = 2;
-                    arContext.stroke();
-                    
-                    // Draw point number
-                    arContext.fillStyle = 'white';
-                    arContext.font = '12px Arial';
-                    arContext.textAlign = 'center';
-                    arContext.fillText(index + 1, screenPos.x, screenPos.y + 4);
+                    visiblePoints.push({
+                        point,
+                        index,
+                        screenPos,
+                        distance: screenPos.distance
+                    });
                 }
+            });
+            
+            // Sort by distance (furthest first for proper depth)
+            visiblePoints.sort((a, b) => b.distance - a.distance);
+            
+            // Draw all visible points
+            visiblePoints.forEach(({ point, index, screenPos }) => {
+                // Scale dot size based on distance (closer = larger)
+                const baseSize = 20;
+                const size = Math.max(8, baseSize / Math.max(0.5, screenPos.distance));
+                
+                arContext.beginPath();
+                arContext.arc(screenPos.x, screenPos.y, size, 0, 2 * Math.PI);
+                
+                // Set colors and effects
+                if (point.captured) {
+                    arContext.fillStyle = '#4CAF50';
+                    arContext.shadowBlur = 10;
+                    arContext.shadowColor = '#4CAF50';
+                } else if (index === currentTargetIndex) {
+                    arContext.fillStyle = '#FF9800';
+                    arContext.shadowBlur = 20;
+                    arContext.shadowColor = '#FF9800';
+                    // Add pulsing effect for active target
+                    const pulse = 1 + 0.3 * Math.sin(Date.now() / 200);
+                    arContext.save();
+                    arContext.scale(pulse, pulse);
+                    arContext.translate(screenPos.x * (1 - pulse) / pulse, screenPos.y * (1 - pulse) / pulse);
+                } else {
+                    arContext.fillStyle = '#2196F3';
+                    arContext.shadowBlur = 5;
+                    arContext.shadowColor = '#2196F3';
+                }
+                
+                arContext.fill();
+                
+                if (index === currentTargetIndex) {
+                    arContext.restore();
+                }
+                
+                arContext.shadowBlur = 0;
+                
+                // Draw border
+                arContext.strokeStyle = 'white';
+                arContext.lineWidth = 2;
+                arContext.stroke();
+                
+                // Draw point number (smaller for distant points)
+                const fontSize = Math.max(8, size * 0.6);
+                arContext.fillStyle = 'white';
+                arContext.font = `bold ${fontSize}px Arial`;
+                arContext.textAlign = 'center';
+                arContext.textBaseline = 'middle';
+                arContext.fillText(index + 1, screenPos.x, screenPos.y);
             });
         }
 
-        // Check if crosshair is over target
+        // Check if crosshair is over target with 3D positioning
         function checkCrosshairAlignment() {
             if (currentTargetIndex >= capturePoints.length) return false;
             
             const targetPoint = capturePoints[currentTargetIndex];
             const screenPos = sphericalToScreen(targetPoint.lat, targetPoint.lon, orientationData);
+            
+            if (!screenPos.visible) return false;
+            
             const canvas = document.getElementById('arOverlay');
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
@@ -587,7 +673,10 @@
                 Math.pow(screenPos.y - centerY, 2)
             );
             
-            return distance < 30; // 30 pixel tolerance
+            // Adjust tolerance based on distance (closer targets need more precision)
+            const tolerance = Math.max(25, 50 / Math.max(0.5, screenPos.distance));
+            
+            return distance < tolerance;
         }
 
         // Auto capture when aligned
@@ -685,23 +774,45 @@
             captureImage();
         }
 
-        // Handle device orientation
+        // Handle device orientation with proper 3D camera math
         function handleOrientation(event) {
-            orientationData.alpha = event.alpha || 0;
-            orientationData.beta = event.beta || 0;
-            orientationData.gamma = event.gamma || 0;
+            // Normalize alpha to 0-360 range to handle wraparound
+            let alpha = event.alpha || 0;
+            if (alpha < 0) alpha += 360;
             
-            // Calculate compass heading
-            let compass = orientationData.alpha;
-            if (compass < 0) compass += 360;
+            // Store raw values for debugging
+            const rawAlpha = event.alpha || 0;
+            const rawBeta = event.beta || 0;
+            const rawGamma = event.gamma || 0;
+            
+            // Apply smoothing to prevent jitter
+            if (orientationData.alpha !== undefined) {
+                // Handle alpha wraparound (359° -> 1° transition)
+                let alphaDiff = alpha - orientationData.alpha;
+                if (alphaDiff > 180) alphaDiff -= 360;
+                if (alphaDiff < -180) alphaDiff += 360;
+                alpha = orientationData.alpha + alphaDiff * 0.8; // Smooth transition
+                
+                // Normalize back to 0-360
+                if (alpha < 0) alpha += 360;
+                if (alpha >= 360) alpha -= 360;
+            }
+            
+            // Update orientation data with smoothed values
+            orientationData.alpha = alpha;
+            orientationData.beta = rawBeta;
+            orientationData.gamma = rawGamma;
+            
+            // Calculate compass heading (0° = North, 90° = East, etc.)
+            let compass = alpha;
             
             // Update debug display
-            document.getElementById('alpha').textContent = Math.round(orientationData.alpha);
-            document.getElementById('beta').textContent = Math.round(orientationData.beta);
-            document.getElementById('gamma').textContent = Math.round(orientationData.gamma);
+            document.getElementById('alpha').textContent = Math.round(rawAlpha);
+            document.getElementById('beta').textContent = Math.round(rawBeta);
+            document.getElementById('gamma').textContent = Math.round(rawGamma);
             document.getElementById('compass').textContent = Math.round(compass);
             
-            // Redraw AR overlay
+            // Redraw AR overlay with new orientation
             drawAROverlay();
             
             // Check for auto capture
