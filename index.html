@@ -117,13 +117,16 @@
 
         #controls {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
+            gap: 15px;
         }
 
         #captureStatus {
             font-size: 14px;
             font-weight: 500;
+            text-align: center;
+            margin-bottom: 15px;
         }
 
         .control-btn {
@@ -223,6 +226,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
             color: #1565c0;
             letter-spacing: -0.5px;
+            text-transform: uppercase;
         }
 
         #startScreen p {
@@ -298,15 +302,13 @@
         </div>
 
         <div id="ui">
+            <div id="captureStatus">0 / 24 photos captured</div>
             <div id="progressBar">
                 <div id="progressFill"></div>
             </div>
             <div id="controls">
-                <div id="captureStatus">0 / 24 photos captured</div>
-                <div>
-                    <button class="control-btn" id="saveBtn">Save Partial</button>
-                    <button class="control-btn primary" id="captureBtn">Manual Capture</button>
-                </div>
+                <button class="control-btn" id="saveBtn">Save Partial</button>
+                <button class="control-btn primary" id="captureBtn">Manual Capture</button>
             </div>
         </div>
     </div>
@@ -547,10 +549,10 @@
             }
 
             project3DToScreen(targetAzimuth, targetElevation, centerX, centerY) {
-                // Portrait mode coordinate system - fix the roll/pan confusion
-                const phoneAzimuth = this.currentOrientation.alpha;  // Yaw (compass/pan) - left/right rotation
-                const phonePitch = this.currentOrientation.beta;     // Pitch (up/down tilt)
-                const phoneRoll = this.currentOrientation.gamma;     // Roll (camera rotation around viewing axis)
+                // Portrait mode coordinate system with increased pan sensitivity
+                const phoneAzimuth = this.currentOrientation.alpha * 3.0;  // 3x sensitivity for pan
+                const phonePitch = this.currentOrientation.beta;            // Normal sensitivity for tilt
+                const phoneRoll = -this.currentOrientation.gamma;           // Inverted roll to fix direction
                 
                 // Calculate target position relative to phone orientation
                 let relativeAzimuth = this.normalizeAngle(targetAzimuth - phoneAzimuth);
@@ -579,8 +581,7 @@
                 let screenX = centerX + (x3d * focalLength / z3d);
                 let screenY = centerY - (y3d * focalLength / z3d);
                 
-                // Apply roll rotation ONLY to screen coordinates (not world position)
-                // This rotates the view around the center point when phone rolls
+                // Apply roll rotation to screen coordinates
                 const cosRoll = Math.cos(rollRad);
                 const sinRoll = Math.sin(rollRad);
                 const deltaX = screenX - centerX;
@@ -588,6 +589,21 @@
                 
                 screenX = centerX + (deltaX * cosRoll - deltaY * sinRoll);
                 screenY = centerY + (deltaX * sinRoll + deltaY * cosRoll);
+                
+                // Add lens distortion for realism at screen edges
+                const distFromCenter = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+                const distRatio = distFromCenter / maxDist;
+                
+                // Barrel distortion coefficient (subtle lens warp)
+                const k = 0.15;
+                const distortion = 1 + k * distRatio * distRatio;
+                
+                const finalDeltaX = (screenX - centerX) * distortion;
+                const finalDeltaY = (screenY - centerY) * distortion;
+                
+                screenX = centerX + finalDeltaX;
+                screenY = centerY + finalDeltaY;
                 
                 // Calculate angular distance from center for proximity detection
                 const angularDistance = Math.acos(Math.max(0, Math.min(1, z3d))) * 180 / Math.PI;
@@ -602,7 +618,8 @@
                     y: screenY,
                     visible: visible,
                     distance: angularDistance,
-                    depth: z3d
+                    depth: z3d,
+                    distortion: distortion
                 };
             }
 
@@ -621,11 +638,12 @@
                     const x = target.screenX;
                     const y = target.screenY;
                     
-                    // Realistic perspective scaling based on depth
+                    // Realistic perspective scaling based on depth and lens distortion
                     const baseRadius = 25;
                     const depth = target.depth || 1;
                     const perspectiveScale = Math.max(0.3, Math.min(2.0, 1 / depth));
-                    const radius = baseRadius * perspectiveScale;
+                    const distortionScale = target.distortion || 1;
+                    const radius = baseRadius * perspectiveScale * distortionScale;
                     
                     // Distance-based opacity for depth perception
                     const depthOpacity = Math.max(0.4, Math.min(1.0, depth));
@@ -639,11 +657,11 @@
                     } else if (target.distance < this.captureThreshold) {
                         color = `rgba(255, 193, 7, ${0.95 * depthOpacity})`;
                         borderColor = `rgba(255, 193, 7, ${depthOpacity})`;
-                        glowSize = 20 * perspectiveScale;
+                        glowSize = 20 * perspectiveScale * distortionScale;
                     } else {
                         color = `rgba(66, 165, 245, ${0.7 * depthOpacity})`;
                         borderColor = `rgba(255, 255, 255, ${0.8 * depthOpacity})`;
-                        glowSize = 8 * perspectiveScale;
+                        glowSize = 8 * perspectiveScale * distortionScale;
                     }
                     
                     // Draw glow effect for depth and engagement
@@ -797,18 +815,118 @@
                 
                 // Create a composite image showing all captured photos
                 this.createPhotospherePreview().then(previewCanvas => {
-                    // Download the preview image
+                    // Convert to blob and create object URL for preview
                     previewCanvas.toBlob(blob => {
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `photosphere_${this.capturedPhotos.length}photos_${Date.now()}.jpg`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                    }, 'image/jpeg', 0.8);
-                    
-                    alert(`Saved photosphere preview with ${this.capturedPhotos.length} photos!`);
+                        const imageUrl = URL.createObjectURL(blob);
+                        
+                        // Create preview overlay
+                        this.showImagePreview(imageUrl, () => {
+                            // Save to device when user confirms
+                            const a = document.createElement('a');
+                            a.href = imageUrl;
+                            a.download = `photosphere_${this.capturedPhotos.length}photos_${Date.now()}.jpg`;
+                            a.click();
+                            URL.revokeObjectURL(imageUrl);
+                        });
+                        
+                    }, 'image/jpeg', 0.9);
                 });
+            }
+
+            showImagePreview(imageUrl, onSave) {
+                // Create preview overlay
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.9);
+                    z-index: 1000;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    padding: 20px;
+                    box-sizing: border-box;
+                `;
+                
+                // Create preview image
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.style.cssText = `
+                    max-width: 90%;
+                    max-height: 70%;
+                    border-radius: 10px;
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+                `;
+                
+                // Create title
+                const title = document.createElement('h2');
+                title.textContent = `Photosphere Preview (${this.capturedPhotos.length} photos)`;
+                title.style.cssText = `
+                    color: white;
+                    margin-bottom: 20px;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    font-size: 20px;
+                    text-align: center;
+                `;
+                
+                // Create buttons container
+                const buttons = document.createElement('div');
+                buttons.style.cssText = `
+                    display: flex;
+                    gap: 15px;
+                    margin-top: 20px;
+                `;
+                
+                // Save button
+                const saveBtn = document.createElement('button');
+                saveBtn.textContent = 'Save to Photos';
+                saveBtn.style.cssText = `
+                    background: #4CAF50;
+                    color: white;
+                    border: none;
+                    border-radius: 25px;
+                    padding: 12px 24px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                `;
+                
+                // Cancel button
+                const cancelBtn = document.createElement('button');
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.style.cssText = `
+                    background: rgba(255, 255, 255, 0.2);
+                    color: white;
+                    border: 1px solid rgba(255, 255, 255, 0.3);
+                    border-radius: 25px;
+                    padding: 12px 24px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                `;
+                
+                // Event listeners
+                saveBtn.addEventListener('click', () => {
+                    onSave();
+                    document.body.removeChild(overlay);
+                    alert('Photosphere saved to your downloads!');
+                });
+                
+                cancelBtn.addEventListener('click', () => {
+                    document.body.removeChild(overlay);
+                });
+                
+                // Assemble preview
+                buttons.appendChild(saveBtn);
+                buttons.appendChild(cancelBtn);
+                overlay.appendChild(title);
+                overlay.appendChild(img);
+                overlay.appendChild(buttons);
+                document.body.appendChild(overlay);
             }
 
             async createPhotospherePreview() {
