@@ -451,11 +451,17 @@
 
         // Device orientation handler
         function handleDeviceOrientation(event) {
+            if (!orientationPermissionGranted) return;
+            
+            // Store orientation data with null checks
             deviceOrientationData = {
                 alpha: event.alpha || 0,
                 beta: event.beta || 0,
                 gamma: event.gamma || 0
             };
+            
+            // Debug log for testing
+            console.log('Orientation:', deviceOrientationData);
             
             // Auto capture when aligned
             if (autoCapture && !isCapturing && isAlignedWithTarget()) {
@@ -466,7 +472,7 @@
         // Start capture
         async function startCapture() {
             try {
-                showNotification('Requesting permissions...');
+                showNotification('Requesting camera access...');
                 
                 // Request camera
                 cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -480,19 +486,43 @@
                 const cameraView = document.getElementById('cameraView');
                 cameraView.srcObject = cameraStream;
                 
-                // Request orientation
+                showNotification('Camera access granted. Requesting orientation...');
+                
+                // Handle orientation permission
+                let orientationGranted = false;
+                
                 if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission === 'granted') {
-                        orientationPermissionGranted = true;
-                        window.addEventListener('deviceorientation', handleDeviceOrientation);
+                    // iOS 13+ requires explicit permission
+                    try {
+                        const permission = await DeviceOrientationEvent.requestPermission();
+                        if (permission === 'granted') {
+                            orientationGranted = true;
+                            showNotification('Orientation permission granted!');
+                        } else {
+                            showNotification('Orientation permission denied. Manual mode only.');
+                        }
+                    } catch (err) {
+                        console.error('Orientation permission error:', err);
+                        showNotification('Orientation permission error. Manual mode only.');
                     }
                 } else {
-                    orientationPermissionGranted = true;
-                    window.addEventListener('deviceorientation', handleDeviceOrientation);
+                    // Android or older iOS - no permission needed
+                    orientationGranted = true;
+                    showNotification('Orientation access enabled!');
                 }
                 
-                // Initialize
+                // Set up orientation listener if granted
+                if (orientationGranted) {
+                    orientationPermissionGranted = true;
+                    window.addEventListener('deviceorientation', handleDeviceOrientation);
+                } else {
+                    orientationPermissionGranted = false;
+                    // Disable auto capture if no orientation
+                    autoCapture = false;
+                    document.getElementById('autoToggle').textContent = 'Auto: OFF';
+                }
+                
+                // Initialize AR system
                 generateTargetPositions();
                 initAROverlay();
                 
@@ -500,11 +530,15 @@
                 document.getElementById('frontPage').classList.add('hidden');
                 document.getElementById('captureInterface').classList.remove('hidden');
                 
-                showNotification('Ready! Point at blue dots to capture.');
+                if (orientationPermissionGranted) {
+                    showNotification('AR capture ready! Point at blue dots.');
+                } else {
+                    showNotification('Manual capture ready! Use capture button.');
+                }
                 
             } catch (error) {
                 console.error('Error starting capture:', error);
-                showNotification('Error: Could not access camera');
+                showNotification(`Error: ${error.message}`);
             }
         }
 
@@ -752,18 +786,30 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('360° Photosphere Capture PWA v1.0.0 ready');
+            console.log('360° Photosphere Capture PWA v1.0.1 ready');
             
-            // Check capabilities
+            // Check capabilities and update UI
             const hasCamera = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
             const hasOrientation = 'DeviceOrientationEvent' in window;
+            const hasPermissionAPI = typeof DeviceOrientationEvent.requestPermission === 'function';
             
+            let statusText = '';
             if (!hasCamera) {
-                showNotification('Camera not available');
+                statusText = '❌ Camera not available';
             } else if (!hasOrientation) {
-                showNotification('Device orientation not available');
+                statusText = '❌ Device orientation not available';
+            } else if (hasPermissionAPI) {
+                statusText = '📱 iOS device - will request orientation permission';
             } else {
-                showNotification('All systems ready!');
+                statusText = '✅ All features available';
+            }
+            
+            document.getElementById('featureStatus').textContent = statusText;
+            
+            if (hasCamera && hasOrientation) {
+                showNotification('Ready to capture! Tap Start Capture.');
+            } else {
+                showNotification('Some features may not work on this device.');
             }
         });
     </script>
