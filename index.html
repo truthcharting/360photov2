@@ -504,12 +504,21 @@
         
         <!-- Permission Screen -->
         <div class="screen permission-screen" id="permissionScreen">
-            <div class="permission-icon">🔐</div>
-            <h2 class="permission-title">Camera Access Required</h2>
-            <p class="permission-text">We need access to your camera and device sensors to create amazing 360° photos. Your privacy is protected - nothing is stored without your permission.</p>
+            <div class="permission-icon">📷</div>
+            <h2 class="permission-title">Camera & Sensors Required</h2>
+            <p class="permission-text">This app needs access to your camera and device orientation sensors to create 360° photospheres. All data stays on your device - nothing is uploaded without your permission.</p>
+            
+            <div style="background: rgba(255, 255, 255, 0.1); padding: 1rem; border-radius: 10px; margin: 1rem 0; font-size: 0.9rem;">
+                <strong>What we need:</strong><br>
+                📷 Camera - To capture photos<br>
+                📱 Device orientation - For AR guidance<br>
+                📍 Motion sensors - For precise positioning
+            </div>
+            
             <div class="permission-buttons">
                 <button class="permission-button" onclick="showScreen('landingScreen')">Cancel</button>
-                <button class="permission-button primary" onclick="initializeAR()">Allow Access</button>
+                <button class="permission-button" onclick="testCameraOnly()">Test Camera</button>
+                <button class="permission-button primary" onclick="initializeAR()">Allow All Access</button>
             </div>
         </div>
         
@@ -628,6 +637,50 @@
             document.getElementById('errorMessage').classList.remove('show');
         }
         
+        // Test camera only (for debugging)
+        async function testCameraOnly() {
+            try {
+                // Simple camera test
+                const testStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+                
+                // Show success
+                updateStatus('Camera test successful!');
+                
+                // Stop test stream
+                testStream.getTracks().forEach(track => track.stop());
+                
+                // Show AR screen without full initialization
+                showScreen('arScreen');
+                const video = document.getElementById('cameraPreview');
+                video.srcObject = null;
+                
+                // Show manual capture mode
+                updateStatus('Camera works! You can use manual capture mode.');
+                
+                setTimeout(() => {
+                    showScreen('permissionScreen');
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Camera test error:', error);
+                
+                let errorMessage = 'Camera test failed: ';
+                if (error.name === 'NotAllowedError') {
+                    errorMessage += 'Permission denied. Please allow camera access in your browser settings.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage += 'No camera found on this device.';
+                } else if (error.name === 'NotSupportedError') {
+                    errorMessage += 'Camera not supported in this browser.';
+                } else {
+                    errorMessage += error.message;
+                }
+                
+                showError(errorMessage);
+            }
+        }
+        
         // Permission handling
         function requestPermissions() {
             showScreen('permissionScreen');
@@ -635,24 +688,54 @@
         
         async function initializeAR() {
             try {
-                // Request camera permission
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    }
-                });
+                // Check if getUserMedia is supported
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Camera access not supported on this device');
+                }
+                
+                // Request camera permission with fallback options
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            facingMode: 'environment',
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        }
+                    });
+                } catch (cameraError) {
+                    console.log('High-res camera failed, trying basic camera:', cameraError);
+                    // Fallback to basic camera request
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            facingMode: 'environment'
+                        }
+                    });
+                }
                 
                 // Setup camera preview
                 const video = document.getElementById('cameraPreview');
                 video.srcObject = stream;
                 
-                // Request device orientation permission (iOS)
-                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission !== 'granted') {
-                        throw new Error('Device orientation permission denied');
+                // Wait for video to be ready
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve();
+                    };
+                });
+                
+                // Request device orientation permission (iOS 13+)
+                let orientationPermission = 'granted';
+                if (typeof DeviceOrientationEvent !== 'undefined' && 
+                    typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    try {
+                        orientationPermission = await DeviceOrientationEvent.requestPermission();
+                        if (orientationPermission !== 'granted') {
+                            showError('Device orientation access denied. AR guidance will be limited.');
+                        }
+                    } catch (orientationError) {
+                        console.log('Orientation permission error:', orientationError);
+                        showError('Could not access device orientation. Using manual mode.');
                     }
                 }
                 
@@ -660,15 +743,41 @@
                 capturePoints = calculateCapturePoints();
                 setupCaptureDots();
                 
-                // Start orientation tracking
-                window.addEventListener('deviceorientation', handleOrientationChange);
+                // Start orientation tracking if available
+                if (orientationPermission === 'granted') {
+                    window.addEventListener('deviceorientation', handleOrientationChange);
+                    updateStatus('Ready to capture! Move to blue dots');
+                } else {
+                    updateStatus('Camera ready! Use manual capture mode');
+                }
                 
                 showScreen('arScreen');
-                updateStatus('Ready to capture!');
                 
             } catch (error) {
                 console.error('Initialization error:', error);
-                showError('Failed to initialize camera or sensors. Please check permissions.');
+                
+                // Provide specific error messages
+                let errorMessage = 'Failed to initialize camera or sensors.';
+                
+                if (error.name === 'NotAllowedError') {
+                    errorMessage = 'Camera permission denied. Please allow camera access and try again.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = 'No camera found on this device.';
+                } else if (error.name === 'NotSupportedError') {
+                    errorMessage = 'Camera not supported on this browser.';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage = 'Camera is being used by another app. Please close other camera apps and try again.';
+                } else if (error.message.includes('Camera access not supported')) {
+                    errorMessage = 'Camera access is not supported on this device or browser.';
+                }
+                
+                showError(errorMessage);
+                
+                // Return to permission screen for retry
+                setTimeout(() => {
+                    hideError();
+                    showScreen('permissionScreen');
+                }, 3000);
             }
         }
         
@@ -1273,7 +1382,7 @@
             });
         }
         
-        // iOS home screen detection
+        // iOS home screen detection and guidance
         function isIOS() {
             return /iPad|iPhone|iPod/.test(navigator.userAgent);
         }
@@ -1281,6 +1390,10 @@
         function isStandalone() {
             return window.navigator.standalone === true || 
                    window.matchMedia('(display-mode: standalone)').matches;
+        }
+        
+        function isSafari() {
+            return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         }
         
         // Show install prompt for iOS
@@ -1300,11 +1413,26 @@
                     z-index: 1000;
                     backdrop-filter: blur(10px);
                 `;
+                
+                let installText = '';
+                if (isSafari()) {
+                    installText = `
+                        <div style="margin-bottom: 10px;">📱 For best experience, install this app</div>
+                        <div style="font-size: 0.9rem; opacity: 0.8;">
+                            Tap <strong>Share ⬆️</strong> then <strong>"Add to Home Screen"</strong>
+                        </div>
+                    `;
+                } else {
+                    installText = `
+                        <div style="margin-bottom: 10px;">📱 Use Safari for best experience</div>
+                        <div style="font-size: 0.9rem; opacity: 0.8;">
+                            Camera permissions work better in Safari browser
+                        </div>
+                    `;
+                }
+                
                 installBanner.innerHTML = `
-                    <div style="margin-bottom: 10px;">📱 Install this app</div>
-                    <div style="font-size: 0.9rem; opacity: 0.8;">
-                        Tap <strong>Share</strong> then <strong>Add to Home Screen</strong>
-                    </div>
+                    ${installText}
                     <button onclick="this.parentElement.remove()" 
                             style="margin-top: 10px; background: rgba(255,255,255,0.2); 
                                    border: none; color: white; padding: 8px 16px; 
