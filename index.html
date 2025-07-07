@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360 Photosphere Capture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        #cameraContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+        }
+
+        #cameraFeed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #arOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .ar-dot {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(66, 165, 245, 0.8);
+            border: 3px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 20px rgba(66, 165, 245, 0.6);
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+            animation: pulse 2s infinite;
+        }
+
+        .ar-dot.captured {
+            background: rgba(76, 175, 80, 0.8);
+            border-color: rgba(76, 175, 80, 1);
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.6);
+            animation: none;
+        }
+
+        .ar-dot.active {
+            background: rgba(255, 193, 7, 0.9);
+            border-color: rgba(255, 193, 7, 1);
+            box-shadow: 0 0 30px rgba(255, 193, 7, 0.8);
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.1); }
+        }
+
+        #ui {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+            padding: 20px;
+            z-index: 20;
+        }
+
+        #progressBar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        #progressFill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #66BB6A);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        #controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #captureStatus {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 25px;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .control-btn.primary {
+            background: rgba(66, 165, 245, 0.8);
+            border-color: rgba(66, 165, 245, 1);
+        }
+
+        .control-btn.success {
+            background: rgba(76, 175, 80, 0.8);
+            border-color: rgba(76, 175, 80, 1);
+        }
+
+        #topUI {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 20;
+        }
+
+        #orientationInfo {
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        #autoCapture {
+            background: rgba(255, 193, 7, 0.9);
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #000;
+            display: none;
+        }
+
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 100;
+        }
+
+        #startScreen h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        #startScreen p {
+            font-size: 16px;
+            margin-bottom: 40px;
+            opacity: 0.9;
+            max-width: 300px;
+        }
+
+        #startBtn {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            border: none;
+            border-radius: 30px;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #startBtn:hover {
+            background: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .capture-flash {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 15;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .capture-flash.active {
+            animation: flash 0.3s ease;
+        }
+
+        @keyframes flash {
+            0% { opacity: 0; }
+            50% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="startScreen">
+        <h1>📸 360° Photosphere</h1>
+        <p>Capture immersive 360° photos with AR-guided assistance</p>
+        <button id="startBtn">Start Capture</button>
+    </div>
+
+    <div id="cameraContainer" style="display: none;">
+        <video id="cameraFeed" autoplay playsinline></video>
+        <canvas id="arOverlay"></canvas>
+        <div class="capture-flash" id="captureFlash"></div>
+        
+        <div id="topUI">
+            <div id="orientationInfo">Hold steady...</div>
+            <div id="autoCapture">Auto-capture ready!</div>
+        </div>
+
+        <div id="ui">
+            <div id="progressBar">
+                <div id="progressFill"></div>
+            </div>
+            <div id="controls">
+                <div id="captureStatus">0 / 24 photos captured</div>
+                <div>
+                    <button class="control-btn" id="saveBtn">Save Partial</button>
+                    <button class="control-btn primary" id="captureBtn">Manual Capture</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PhotosphereCapture {
+            constructor() {
+                this.isCapturing = false;
+                this.capturedPhotos = [];
+                this.totalTargets = 24; // 6 horizontal positions × 4 vertical levels
+                this.currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
+                this.targets = [];
+                this.autoCapture = true;
+                this.captureThreshold = 15; // degrees
+                this.stream = null;
+                
+                this.initializeTargets();
+                this.bindEvents();
+            }
+
+            initializeTargets() {
+                // Create target positions for a spherical grid
+                const horizontalSteps = 6; // 60° apart
+                const verticalSteps = 4; // 45° apart
+                
+                for (let v = 0; v < verticalSteps; v++) {
+                    for (let h = 0; h < horizontalSteps; h++) {
+                        const azimuth = (h * 60) % 360; // 0, 60, 120, 180, 240, 300
+                        const elevation = -45 + (v * 30); // -45, -15, 15, 45
+                        
+                        this.targets.push({
+                            id: `target_${v}_${h}`,
+                            azimuth: azimuth,
+                            elevation: elevation,
+                            captured: false,
+                            screenX: 0,
+                            screenY: 0,
+                            visible: true
+                        });
+                    }
+                }
+            }
+
+            async bindEvents() {
+                const startBtn = document.getElementById('startBtn');
+                const captureBtn = document.getElementById('captureBtn');
+                const saveBtn = document.getElementById('saveBtn');
+
+                startBtn.addEventListener('click', () => this.startCapture());
+                captureBtn.addEventListener('click', () => this.manualCapture());
+                saveBtn.addEventListener('click', () => this.savePartial());
+
+                // Request device orientation permission for iOS
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    await DeviceOrientationEvent.requestPermission();
+                }
+            }
+
+            async startCapture() {
+                try {
+                    this.stream = await navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            facingMode: 'environment',
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        }
+                    });
+
+                    const video = document.getElementById('cameraFeed');
+                    video.srcObject = this.stream;
+                    
+                    document.getElementById('startScreen').style.display = 'none';
+                    document.getElementById('cameraContainer').style.display = 'block';
+                    
+                    this.isCapturing = true;
+                    this.setupAROverlay();
+                    this.startOrientationTracking();
+                    
+                } catch (error) {
+                    console.error('Error accessing camera:', error);
+                    alert('Camera access denied. Please allow camera permissions.');
+                }
+            }
+
+            setupAROverlay() {
+                const canvas = document.getElementById('arOverlay');
+                const ctx = canvas.getContext('2d');
+                
+                // Set canvas size
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                
+                this.renderARDots();
+                
+                // Re-render on resize
+                window.addEventListener('resize', () => {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    this.renderARDots();
+                });
+            }
+
+            startOrientationTracking() {
+                window.addEventListener('deviceorientation', (event) => {
+                    if (!this.isCapturing) return;
+                    
+                    this.currentOrientation = {
+                        alpha: event.alpha || 0, // compass heading
+                        beta: event.beta || 0,   // front-to-back tilt
+                        gamma: event.gamma || 0  // left-to-right tilt
+                    };
+                    
+                    this.updateARDots();
+                    this.checkAutoCapture();
+                    this.updateOrientationInfo();
+                });
+            }
+
+            updateARDots() {
+                const canvas = document.getElementById('arOverlay');
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                
+                this.targets.forEach(target => {
+                    // Calculate screen position based on orientation
+                    const azimuthDiff = target.azimuth - this.currentOrientation.alpha;
+                    const elevationDiff = target.elevation - this.currentOrientation.beta;
+                    
+                    // Project to screen coordinates (simplified)
+                    const screenX = centerX + (azimuthDiff * 3);
+                    const screenY = centerY + (elevationDiff * 4);
+                    
+                    target.screenX = screenX;
+                    target.screenY = screenY;
+                    target.visible = screenX > -50 && screenX < canvas.width + 50 && 
+                                   screenY > -50 && screenY < canvas.height + 50;
+                });
+                
+                this.renderARDots();
+            }
+
+            renderARDots() {
+                const canvas = document.getElementById('arOverlay');
+                const ctx = canvas.getContext('2d');
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                this.targets.forEach(target => {
+                    if (!target.visible) return;
+                    
+                    const x = target.screenX;
+                    const y = target.screenY;
+                    const radius = 20;
+                    
+                    // Determine dot state
+                    let color, borderColor;
+                    if (target.captured) {
+                        color = 'rgba(76, 175, 80, 0.8)';
+                        borderColor = 'rgba(76, 175, 80, 1)';
+                    } else if (this.isNearTarget(target)) {
+                        color = 'rgba(255, 193, 7, 0.9)';
+                        borderColor = 'rgba(255, 193, 7, 1)';
+                    } else {
+                        color = 'rgba(66, 165, 245, 0.8)';
+                        borderColor = 'rgba(255, 255, 255, 0.9)';
+                    }
+                    
+                    // Draw dot
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+                    ctx.strokeStyle = borderColor;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                });
+            }
+
+            isNearTarget(target) {
+                const azimuthDiff = Math.abs(target.azimuth - this.currentOrientation.alpha);
+                const elevationDiff = Math.abs(target.elevation - this.currentOrientation.beta);
+                
+                return azimuthDiff < this.captureThreshold && elevationDiff < this.captureThreshold;
+            }
+
+            checkAutoCapture() {
+                if (!this.autoCapture) return;
+                
+                const nearTarget = this.targets.find(target => 
+                    !target.captured && this.isNearTarget(target)
+                );
+                
+                if (nearTarget) {
+                    document.getElementById('autoCapture').style.display = 'block';
+                    setTimeout(() => {
+                        if (this.isNearTarget(nearTarget) && !nearTarget.captured) {
+                            this.capturePhoto(nearTarget);
+                        }
+                    }, 1000);
+                } else {
+                    document.getElementById('autoCapture').style.display = 'none';
+                }
+            }
+
+            async capturePhoto(target = null) {
+                if (!target) {
+                    // Manual capture - find nearest uncaptured target
+                    target = this.targets.find(t => !t.captured && this.isNearTarget(t)) ||
+                            this.targets.find(t => !t.captured);
+                }
+                
+                if (!target) return;
+                
+                // Flash effect
+                const flash = document.getElementById('captureFlash');
+                flash.classList.add('active');
+                setTimeout(() => flash.classList.remove('active'), 300);
+                
+                // Capture image from video
+                const video = document.getElementById('cameraFeed');
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+                
+                // Store the captured image
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                this.capturedPhotos.push({
+                    targetId: target.id,
+                    imageData: imageData,
+                    orientation: { ...this.currentOrientation },
+                    timestamp: Date.now()
+                });
+                
+                target.captured = true;
+                this.updateProgress();
+                
+                // Haptic feedback if available
+                if (navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+            }
+
+            manualCapture() {
+                this.capturePhoto();
+            }
+
+            updateProgress() {
+                const captured = this.capturedPhotos.length;
+                const total = this.totalTargets;
+                const percentage = (captured / total) * 100;
+                
+                document.getElementById('progressFill').style.width = `${percentage}%`;
+                document.getElementById('captureStatus').textContent = 
+                    `${captured} / ${total} photos captured`;
+                
+                if (captured === total) {
+                    this.completeCapture();
+                }
+            }
+
+            updateOrientationInfo() {
+                const info = document.getElementById('orientationInfo');
+                const uncapturedTargets = this.targets.filter(t => !t.captured);
+                
+                if (uncapturedTargets.length === 0) {
+                    info.textContent = 'Complete! 🎉';
+                    return;
+                }
+                
+                const nearTarget = uncapturedTargets.find(t => this.isNearTarget(t));
+                if (nearTarget) {
+                    info.textContent = 'Perfect! Hold steady...';
+                } else {
+                    info.textContent = `${uncapturedTargets.length} spots remaining`;
+                }
+            }
+
+            savePartial() {
+                if (this.capturedPhotos.length === 0) {
+                    alert('No photos captured yet!');
+                    return;
+                }
+                
+                const data = {
+                    photos: this.capturedPhotos,
+                    targets: this.targets,
+                    timestamp: Date.now(),
+                    type: 'partial_photosphere'
+                };
+                
+                const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `photosphere_partial_${Date.now()}.json`;
+                a.click();
+                
+                alert(`Saved partial photosphere with ${this.capturedPhotos.length} photos!`);
+            }
+
+            completeCapture() {
+                const saveBtn = document.getElementById('saveBtn');
+                saveBtn.textContent = 'Save Complete';
+                saveBtn.classList.add('success');
+                
+                // Auto-save complete photosphere
+                setTimeout(() => {
+                    this.savePartial();
+                }, 1000);
+            }
+        }
+
+        // Initialize the app
+        const app = new PhotosphereCapture();
+    </script>
+</body>
+</html>
