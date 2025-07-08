@@ -362,6 +362,11 @@
             width: 100%;
             height: 100%;
         }
+
+        .webxr-disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -436,7 +441,7 @@
             <div class="viewer-controls">
                 <button class="back-btn" onclick="backToCapture()">← Back</button>
                 <button class="control-btn" onclick="downloadPhotosphere()">💾 Download</button>
-                <button class="control-btn" onclick="toggleImmersiveViewer()">🥽 Immersive View</button>
+                <button class="control-btn" id="webxrBtn" onclick="toggleWebXRViewer()">🥽 WebXR View</button>
             </div>
             <div id="photosphereViewer" class="photosphere-container"></div>
         </div>
@@ -460,9 +465,11 @@
         let arCanvas = null;
         let deviceOrientationQuaternion = new THREE.Quaternion();
         let opencvReady = false;
-        let immersiveSession = null;
-        let immersiveRenderer = null;
-        let immersiveScene = null;
+        let webXRSession = null;
+        let webXRRenderer = null;
+        let webXRScene = null;
+        let initialOrientationQuaternion = new THREE.Quaternion();
+        let baseScreenOrientation = 0;
 
         // Wait for OpenCV to load
         function onOpenCVReady() {
@@ -470,68 +477,90 @@
             console.log('OpenCV.js loaded successfully');
         }
 
-        // Generate capture points in organized rows
+        // Generate capture points in organized bands/rows
         function generateCapturePoints() {
             const points = [];
-            const radius = 5;
-            
-            // Define the latitude bands (elevation angles from north pole)
-            const latitudes = [
-                0,       // North pole
-                Math.PI / 4,     // Upper band (45°)
-                Math.PI / 2,     // Equator (90°)
-                3 * Math.PI / 4, // Lower band (135°)
-                Math.PI          // South pole
-            ];
-            
-            // Define number of points per latitude band
-            const pointsPerBand = [1, 6, 8, 6, 1]; // Total: 22 points
-            
             let pointId = 0;
+
+            // Top pole
+            points.push({
+                id: pointId++,
+                position: new THREE.Vector3(0, 5, 0),
+                captured: false,
+                image: null,
+                mesh: null,
+                captureOrientation: null
+            });
+
+            // Upper band (between top pole and equator)
+            const upperLatitude = Math.PI / 3; // 60 degrees from top
+            const upperRadius = 5 * Math.sin(upperLatitude);
+            const upperY = 5 * Math.cos(upperLatitude);
+            const upperPoints = 6;
             
-            for (let bandIndex = 0; bandIndex < latitudes.length; bandIndex++) {
-                const phi = latitudes[bandIndex]; // latitude angle
-                const numPoints = pointsPerBand[bandIndex];
+            for (let i = 0; i < upperPoints; i++) {
+                const theta = (i / upperPoints) * 2 * Math.PI;
+                const x = upperRadius * Math.cos(theta);
+                const z = upperRadius * Math.sin(theta);
                 
-                if (numPoints === 1) {
-                    // Single point (poles)
-                    const x = 0;
-                    const y = radius * Math.cos(phi);
-                    const z = 0;
-                    
-                    points.push({
-                        id: pointId++,
-                        position: new THREE.Vector3(x, y, z),
-                        captured: false,
-                        image: null,
-                        mesh: null,
-                        captureOrientation: null,
-                        band: bandIndex,
-                        isKeypoint: true
-                    });
-                } else {
-                    // Multiple points in a circular band
-                    for (let i = 0; i < numPoints; i++) {
-                        const theta = (2 * Math.PI * i) / numPoints; // longitude angle
-                        
-                        const x = radius * Math.sin(phi) * Math.cos(theta);
-                        const y = radius * Math.cos(phi);
-                        const z = radius * Math.sin(phi) * Math.sin(theta);
-                        
-                        points.push({
-                            id: pointId++,
-                            position: new THREE.Vector3(x, y, z),
-                            captured: false,
-                            image: null,
-                            mesh: null,
-                            captureOrientation: null,
-                            band: bandIndex,
-                            isKeypoint: bandIndex === 2 // Equator points are key
-                        });
-                    }
-                }
+                points.push({
+                    id: pointId++,
+                    position: new THREE.Vector3(x, upperY, z),
+                    captured: false,
+                    image: null,
+                    mesh: null,
+                    captureOrientation: null
+                });
             }
+
+            // Equator band
+            const equatorPoints = 8;
+            for (let i = 0; i < equatorPoints; i++) {
+                const theta = (i / equatorPoints) * 2 * Math.PI;
+                const x = 5 * Math.cos(theta);
+                const z = 5 * Math.sin(theta);
+                
+                points.push({
+                    id: pointId++,
+                    position: new THREE.Vector3(x, 0, z),
+                    captured: false,
+                    image: null,
+                    mesh: null,
+                    captureOrientation: null
+                });
+            }
+
+            // Lower band (between equator and bottom pole)
+            const lowerLatitude = 2 * Math.PI / 3; // 120 degrees from top (60 degrees from bottom)
+            const lowerRadius = 5 * Math.sin(lowerLatitude);
+            const lowerY = 5 * Math.cos(lowerLatitude);
+            const lowerPoints = 6;
             
+            for (let i = 0; i < lowerPoints; i++) {
+                const theta = (i / lowerPoints) * 2 * Math.PI;
+                const x = lowerRadius * Math.cos(theta);
+                const z = lowerRadius * Math.sin(theta);
+                
+                points.push({
+                    id: pointId++,
+                    position: new THREE.Vector3(x, lowerY, z),
+                    captured: false,
+                    image: null,
+                    mesh: null,
+                    captureOrientation: null
+                });
+            }
+
+            // Bottom pole
+            points.push({
+                id: pointId++,
+                position: new THREE.Vector3(0, -5, 0),
+                captured: false,
+                image: null,
+                mesh: null,
+                captureOrientation: null
+            });
+
             return points;
         }
 
@@ -565,13 +594,8 @@
             dotMeshes = [];
             
             capturePoints.forEach((point, index) => {
-                // Different colors for different bands
-                let color = 0x2196F3; // Blue default
-                if (point.band === 0 || point.band === 4) color = 0xFF5722; // Orange for poles
-                else if (point.band === 2) color = 0x4CAF50; // Green for equator
-                
                 const material = new THREE.MeshBasicMaterial({ 
-                    color: color,
+                    color: 0x2196F3,
                     transparent: true,
                     opacity: 0.8
                 });
@@ -586,21 +610,15 @@
             });
         }
 
-        // Update device orientation with better stability
+        // Update device orientation
         function updateDeviceOrientation() {
             if (!threeCamera) return;
 
-            // Get screen orientation for proper correction
-            const screenOrientation = screen.orientation ? screen.orientation.angle : 0;
-            
-            // Convert to radians and apply orientation correction
             const alphaRad = THREE.MathUtils.degToRad(orientationData.alpha || 0);
             const betaRad = THREE.MathUtils.degToRad(orientationData.beta || 0);
             const gammaRad = THREE.MathUtils.degToRad(orientationData.gamma || 0);
-            const screenRad = THREE.MathUtils.degToRad(screenOrientation);
 
-            // Create proper rotation sequence
-            const euler = new THREE.Euler(betaRad, alphaRad, -gammaRad + screenRad, 'YXZ');
+            const euler = new THREE.Euler(betaRad, alphaRad, -gammaRad, 'YXZ');
             deviceOrientationQuaternion.setFromEuler(euler);
             threeCamera.quaternion.copy(deviceOrientationQuaternion);
         }
@@ -624,12 +642,7 @@
                     mesh.material.color.setHex(0x4CAF50);
                     mesh.material.opacity = 0.6;
                 } else {
-                    // Reset to original band color
-                    let color = 0x2196F3;
-                    if (point.band === 0 || point.band === 4) color = 0xFF5722;
-                    else if (point.band === 2) color = 0x4CAF50;
-                    
-                    mesh.material.color.setHex(color);
+                    mesh.material.color.setHex(0x2196F3);
                     mesh.material.opacity = 0.8;
                     
                     if (isDotInCrosshair(mesh)) {
@@ -684,7 +697,7 @@
             }
         }
 
-        // Capture image at specific point with proper orientation correction
+        // Capture image at specific point with proper orientation
         function captureImageAtPoint(pointIndex) {
             const point = capturePoints[pointIndex];
             if (point.captured) return;
@@ -693,52 +706,31 @@
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             
-            // Use video's natural dimensions for best quality
-            canvas.width = video.videoWidth || 1920;
-            canvas.height = video.videoHeight || 1080;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
             
-            // Get current screen orientation
+            // Store the current device orientation when image was captured
+            const captureDeviceOrientation = {
+                alpha: orientationData.alpha,
+                beta: orientationData.beta,
+                gamma: orientationData.gamma
+            };
+            
+            // Get screen orientation
             const screenOrientation = screen.orientation ? screen.orientation.angle : 0;
             
-            // Save context state
-            context.save();
-            
-            // Apply proper transformation to keep image upright
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            
-            context.translate(centerX, centerY);
-            
-            // Counter-rotate based on device orientation to keep image stable
-            let rotationAngle = 0;
-            
-            // Adjust rotation based on device and screen orientation
-            if (screenOrientation === 90) {
-                rotationAngle = -Math.PI / 2;
-            } else if (screenOrientation === -90 || screenOrientation === 270) {
-                rotationAngle = Math.PI / 2;
-            } else if (screenOrientation === 180) {
-                rotationAngle = Math.PI;
-            }
-            
-            context.rotate(rotationAngle);
-            context.translate(-centerX, -centerY);
-            
-            // Draw the video frame
+            // Draw the video frame without any rotation - we'll handle orientation in the 3D display
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            // Restore context state
-            context.restore();
+            const imageData = canvas.toDataURL('image/jpeg', 0.9);
             
-            const imageData = canvas.toDataURL('image/jpeg', 0.95);
-            
-            // Store capture data with proper orientation
+            // Store capture data with orientation
             point.captured = true;
             point.image = imageData;
             point.captureOrientation = {
-                deviceOrientation: { ...orientationData },
+                deviceOrientation: captureDeviceOrientation,
                 screenOrientation: screenOrientation,
-                quaternion: deviceOrientationQuaternion.clone(),
+                captureQuaternion: deviceOrientationQuaternion.clone(),
                 timestamp: Date.now()
             };
             
@@ -751,13 +743,13 @@
             });
             
             // Create properly oriented 3D image
-            createStableImageMeshAtPoint(point, imageData);
+            createOrientedImageMeshAtPoint(point, imageData);
             updateProgress();
             showCaptureFlash();
         }
 
-        // Create stable, properly oriented 3D image mesh
-        function createStableImageMeshAtPoint(point, imageData) {
+        // Create properly oriented 3D image mesh that maintains capture orientation
+        function createOrientedImageMeshAtPoint(point, imageData) {
             const img = new Image();
             img.onload = () => {
                 const texture = new THREE.Texture(img);
@@ -775,27 +767,27 @@
                 
                 const imageMesh = new THREE.Mesh(planeGeometry, planeMaterial);
                 
-                // Position image closer to camera but maintain proper spacing
+                // Position image closer to camera
                 const direction = point.position.clone().normalize();
                 imageMesh.position.copy(direction.multiplyScalar(4.2));
                 
-                // Apply proper world-space orientation to keep images upright
-                // The key is to make the image always face the camera and stay upright
-                imageMesh.lookAt(new THREE.Vector3(0, 0, 0));
-                
-                // Keep the image upright by constraining rotation around world Y-axis
-                const upVector = new THREE.Vector3(0, 1, 0);
-                const lookDirection = direction.clone().negate().normalize();
-                const rightVector = new THREE.Vector3().crossVectors(upVector, lookDirection).normalize();
-                const correctedUp = new THREE.Vector3().crossVectors(lookDirection, rightVector).normalize();
-                
-                // Create rotation matrix to keep image upright
-                const rotationMatrix = new THREE.Matrix4();
-                rotationMatrix.makeBasis(rightVector, correctedUp, lookDirection);
-                
-                const quaternion = new THREE.Quaternion();
-                quaternion.setFromRotationMatrix(rotationMatrix);
-                imageMesh.quaternion.copy(quaternion);
+                // Apply the exact orientation that was captured
+                if (point.captureOrientation && point.captureOrientation.captureQuaternion) {
+                    // Use the stored quaternion from when the image was captured
+                    imageMesh.quaternion.copy(point.captureOrientation.captureQuaternion);
+                    
+                    // Make the image face towards the camera center
+                    const lookAtMatrix = new THREE.Matrix4();
+                    lookAtMatrix.lookAt(imageMesh.position, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+                    const lookAtQuaternion = new THREE.Quaternion();
+                    lookAtQuaternion.setFromRotationMatrix(lookAtMatrix);
+                    
+                    // Combine the capture orientation with the look-at orientation
+                    imageMesh.quaternion.multiplyQuaternions(lookAtQuaternion, imageMesh.quaternion);
+                } else {
+                    // Fallback: just face the camera
+                    imageMesh.lookAt(new THREE.Vector3(0, 0, 0));
+                }
                 
                 threeScene.add(imageMesh);
                 capturedImageMeshes.push(imageMesh);
@@ -803,38 +795,48 @@
             img.src = imageData;
         }
 
-        // Enhanced stitching with better overlap and blending
+        // Enhanced stitching algorithm
         async function performEnhancedStitching() {
+            if (capturedImages.length < 2) {
+                throw new Error('Need at least 2 images for stitching');
+            }
+
             console.log('Starting enhanced stitching...');
             
             try {
                 const stitchedCanvas = document.createElement('canvas');
                 const ctx = stitchedCanvas.getContext('2d');
                 
-                // Higher resolution output for better quality
+                // Create high-resolution equirectangular canvas
                 stitchedCanvas.width = 4096;
                 stitchedCanvas.height = 2048;
                 
-                // Create neutral background
-                ctx.fillStyle = '#87CEEB';
+                // Create a smooth gradient background
+                const gradient = ctx.createRadialGradient(
+                    stitchedCanvas.width/2, stitchedCanvas.height/2, 0,
+                    stitchedCanvas.width/2, stitchedCanvas.height/2, stitchedCanvas.width/2
+                );
+                gradient.addColorStop(0, '#87CEEB');
+                gradient.addColorStop(0.5, '#98FB98');
+                gradient.addColorStop(1, '#228B22');
+                ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, stitchedCanvas.width, stitchedCanvas.height);
 
-                // Sort images by band for better stitching order
-                const sortedImages = [...capturedImages].sort((a, b) => {
-                    const pointA = capturePoints[a.pointIndex];
-                    const pointB = capturePoints[b.pointIndex];
-                    return pointA.band - pointB.band;
+                // Sort images by position for better stitching
+                const sortedImages = capturedImages.slice().sort((a, b) => {
+                    const aSpherical = cartesianToSpherical(a.position);
+                    const bSpherical = cartesianToSpherical(b.position);
+                    return aSpherical.theta - bSpherical.theta;
                 });
 
-                // Process images with improved placement and blending
+                // Process each image with improved blending
                 for (let i = 0; i < sortedImages.length; i++) {
                     const captureData = sortedImages[i];
-                    const point = capturePoints[captureData.pointIndex];
                     
                     await new Promise(resolve => {
                         const img = new Image();
                         img.onload = () => {
-                            // Convert 3D position to equirectangular coordinates
+                            // Convert capture position to equirectangular coordinates
                             const sphericalCoords = cartesianToSpherical(captureData.position);
                             const equiCoords = sphericalToEquirectangular(
                                 sphericalCoords, 
@@ -842,36 +844,35 @@
                                 stitchedCanvas.height
                             );
                             
-                            // Calculate optimal image size based on band
-                            let scaleFactor = 1.0;
-                            if (point.band === 0 || point.band === 4) scaleFactor = 0.6; // Poles smaller
-                            else if (point.band === 2) scaleFactor = 1.2; // Equator larger
-                            
-                            const baseSize = Math.min(stitchedCanvas.width / 4, stitchedCanvas.height / 2);
-                            const imageWidth = baseSize * scaleFactor;
+                            // Calculate dynamic image size based on total images
+                            const baseSizeFactor = Math.max(0.3, 1.0 / Math.sqrt(sortedImages.length));
+                            const imageWidth = stitchedCanvas.width * baseSizeFactor;
                             const imageHeight = imageWidth * (img.height / img.width);
                             
-                            // Create temporary canvas for processing
+                            // Create temporary canvas for this image with better blending
                             const tempCanvas = document.createElement('canvas');
                             tempCanvas.width = imageWidth;
                             tempCanvas.height = imageHeight;
                             const tempCtx = tempCanvas.getContext('2d');
                             
-                            // Draw and process image
+                            // Draw image and apply advanced feathering
                             tempCtx.drawImage(img, 0, 0, imageWidth, imageHeight);
+                            applyAdvancedFeathering(tempCtx, imageWidth, imageHeight);
                             
-                            // Apply soft blending for seamless integration
-                            ctx.globalCompositeOperation = 'source-over';
-                            ctx.globalAlpha = 0.85;
+                            // Use multiple blend modes for better results
+                            const blendModes = ['multiply', 'overlay', 'soft-light'];
+                            const blendMode = blendModes[i % blendModes.length];
                             
-                            const x = Math.max(0, Math.min(equiCoords.x - imageWidth / 2, stitchedCanvas.width - imageWidth));
-                            const y = Math.max(0, Math.min(equiCoords.y - imageHeight / 2, stitchedCanvas.height - imageHeight));
+                            ctx.globalCompositeOperation = i === 0 ? 'source-over' : blendMode;
+                            ctx.globalAlpha = 0.7 + (0.3 / (i + 1)); // Gradual alpha decrease
+                            
+                            const x = equiCoords.x - imageWidth / 2;
+                            const y = equiCoords.y - imageHeight / 2;
                             
                             ctx.drawImage(tempCanvas, x, y);
-                            ctx.globalAlpha = 1.0;
                             
                             // Update progress
-                            const progress = Math.round(((i + 1) / sortedImages.length) * 100);
+                            const progress = Math.round(((i + 1) / sortedImages.length) * 90);
                             document.getElementById('loadingText').textContent = `Stitching: ${progress}%`;
                             
                             resolve();
@@ -880,10 +881,16 @@
                     });
                 }
 
-                // Apply final smoothing pass
-                await applyFinalSmoothing(stitchedCanvas);
+                // Reset composite operation and apply final smoothing
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.globalAlpha = 1.0;
                 
-                return stitchedCanvas.toDataURL('image/jpeg', 0.92);
+                // Apply final enhancement
+                await applyFinalEnhancement(stitchedCanvas);
+                
+                document.getElementById('loadingText').textContent = 'Finalizing: 100%';
+                
+                return stitchedCanvas.toDataURL('image/jpeg', 0.95);
                 
             } catch (error) {
                 console.error('Enhanced stitching failed:', error);
@@ -899,7 +906,7 @@
             
             const r = Math.sqrt(x * x + y * y + z * z);
             const theta = Math.atan2(z, x); // longitude
-            const phi = Math.acos(Math.max(-1, Math.min(1, y / r))); // latitude from north pole
+            const phi = Math.acos(y / r);   // latitude from north pole
             
             return {
                 r: r,
@@ -911,40 +918,75 @@
         // Convert spherical to equirectangular coordinates
         function sphericalToEquirectangular(spherical, width, height) {
             // Convert to longitude/latitude in degrees
-            let longitude = spherical.theta * 180 / Math.PI;
+            const longitude = spherical.theta * 180 / Math.PI;
             const latitude = 90 - (spherical.phi * 180 / Math.PI);
             
-            // Normalize longitude to 0-360 range
-            if (longitude < 0) longitude += 360;
-            
             // Map to equirectangular coordinates
-            const x = (longitude / 360) * width;
+            const x = ((longitude + 180) / 360) * width;
             const y = ((90 - latitude) / 180) * height;
             
             return { x: x, y: y };
         }
 
-        // Apply final smoothing to reduce seams
-        async function applyFinalSmoothing(canvas) {
+        // Apply advanced feathering with multiple techniques
+        function applyAdvancedFeathering(ctx, width, height) {
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            const featherSize = Math.min(width, height) * 0.15; // Increased feather size
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const index = (y * width + x) * 4;
+                    
+                    // Calculate distance from all edges
+                    const distFromLeft = x;
+                    const distFromRight = width - x - 1;
+                    const distFromTop = y;
+                    const distFromBottom = height - y - 1;
+                    const distFromEdge = Math.min(distFromLeft, distFromRight, distFromTop, distFromBottom);
+                    
+                    if (distFromEdge < featherSize) {
+                        // Use smooth step function for better feathering
+                        const t = distFromEdge / featherSize;
+                        const alpha = t * t * (3 - 2 * t); // Smooth step
+                        data[index + 3] *= alpha;
+                    }
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // Apply final enhancement to the stitched image
+        async function applyFinalEnhancement(canvas) {
             const ctx = canvas.getContext('2d');
             
-            // Simple smoothing using canvas operations
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.filter = 'blur(1px)';
-            
-            // Create temporary canvas for blur effect
+            // Create a copy for processing
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
             const tempCtx = tempCanvas.getContext('2d');
-            
             tempCtx.drawImage(canvas, 0, 0);
             
-            // Apply subtle blur overlay
+            // Apply subtle gaussian blur for smoothing
+            ctx.filter = 'blur(1px)';
             ctx.globalAlpha = 0.3;
             ctx.drawImage(tempCanvas, 0, 0);
-            ctx.globalAlpha = 1.0;
+            
+            // Reset filter and alpha
             ctx.filter = 'none';
+            ctx.globalAlpha = 1.0;
+            
+            // Enhance contrast and saturation
+            ctx.filter = 'contrast(1.1) saturate(1.2) brightness(1.05)';
+            ctx.globalCompositeOperation = 'overlay';
+            ctx.globalAlpha = 0.5;
+            ctx.drawImage(tempCanvas, 0, 0);
+            
+            // Reset to normal
+            ctx.filter = 'none';
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 1.0;
         }
 
         // Manual capture
@@ -980,48 +1022,50 @@
                 }
             }
             
-            if (closestDot !== null && closestDistance < 150) {
+            if (closestDot !== null && closestDistance < 100) {
                 captureImageAtPoint(closestDot);
             } else {
-                alert('Point crosshair at an uncaptured dot to capture.');
+                alert('Point crosshair at an uncaptured blue dot to capture.');
             }
         }
 
-        // Handle device orientation with improved stability
+        // Handle device orientation
         function handleOrientation(event) {
+            let alpha = event.alpha || 0;
+            if (alpha < 0) alpha += 360;
+            
             const rawAlpha = event.alpha || 0;
             const rawBeta = event.beta || 0;
             const rawGamma = event.gamma || 0;
             
-            // Apply smoothing to reduce jitter
-            const smoothingFactor = 0.8;
-            
             if (orientationData.alpha !== undefined) {
-                orientationData.alpha = orientationData.alpha * smoothingFactor + rawAlpha * (1 - smoothingFactor);
-                orientationData.beta = orientationData.beta * smoothingFactor + rawBeta * (1 - smoothingFactor);
-                orientationData.gamma = orientationData.gamma * smoothingFactor + rawGamma * (1 - smoothingFactor);
-            } else {
-                orientationData.alpha = rawAlpha;
-                orientationData.beta = rawBeta;
-                orientationData.gamma = rawGamma;
+                let alphaDiff = alpha - orientationData.alpha;
+                if (alphaDiff > 180) alphaDiff -= 360;
+                if (alphaDiff < -180) alphaDiff += 360;
+                alpha = orientationData.alpha + alphaDiff * 0.8;
+                
+                if (alpha < 0) alpha += 360;
+                if (alpha >= 360) alpha -= 360;
             }
             
-            // Update debug display
-            document.getElementById('alpha').textContent = Math.round(orientationData.alpha);
-            document.getElementById('beta').textContent = Math.round(orientationData.beta);
-            document.getElementById('gamma').textContent = Math.round(orientationData.gamma);
-            document.getElementById('compass').textContent = Math.round(orientationData.alpha);
+            orientationData.alpha = alpha;
+            orientationData.beta = rawBeta;
+            orientationData.gamma = rawGamma;
+            
+            document.getElementById('alpha').textContent = Math.round(rawAlpha);
+            document.getElementById('beta').textContent = Math.round(rawBeta);
+            document.getElementById('gamma').textContent = Math.round(rawGamma);
+            document.getElementById('compass').textContent = Math.round(alpha);
         }
 
-        // Setup camera with better constraints
+        // Setup camera
         async function setupCamera() {
             try {
                 const constraints = {
                     video: {
                         facingMode: 'environment',
-                        width: { ideal: 1920, min: 1280 },
-                        height: { ideal: 1080, min: 720 },
-                        frameRate: { ideal: 30 }
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     }
                 };
                 
@@ -1030,14 +1074,13 @@
                 video.srcObject = cameraStream;
                 
                 video.addEventListener('loadedmetadata', () => {
-                    console.log(`Camera resolution: ${video.videoWidth}x${video.videoHeight}`);
                     setupWebXRScene();
                 });
                 
                 return true;
             } catch (error) {
                 console.error('Camera setup failed:', error);
-                alert('Camera access failed. Please check permissions and try again.');
+                alert('Camera access failed. Please check permissions.');
                 return false;
             }
         }
@@ -1078,7 +1121,6 @@
             
             setTimeout(() => {
                 flash.style.opacity = '0';
-                flash.style.transition = 'opacity 0.2s';
                 setTimeout(() => document.body.removeChild(flash), 200);
             }, 100);
         }
@@ -1097,7 +1139,6 @@
                 return;
             }
             
-            // Request device orientation permission (iOS 13+)
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const permission = await DeviceOrientationEvent.requestPermission();
@@ -1146,17 +1187,16 @@
             document.getElementById('loadingOverlay').style.display = 'none';
         }
 
-        // Finish capture and start stitching (removed minimum requirement)
+        // Finish capture and start stitching
         async function finishCapture() {
             if (capturedImages.length < 2) {
-                alert('Please capture at least 2 images to create a photosphere.');
+                alert('Please capture at least 2 images for a photosphere.');
                 return;
             }
             
-            showLoading('Preparing to stitch images...');
+            showLoading('Initializing stitching...');
             
             try {
-                // Stop camera stream
                 if (cameraStream) {
                     cameraStream.getTracks().forEach(track => track.stop());
                     cameraStream = null;
@@ -1164,8 +1204,7 @@
                 
                 window.removeEventListener('deviceorientation', handleOrientation);
                 
-                // Use enhanced stitching instead of OpenCV
-                document.getElementById('loadingText').textContent = 'Stitching images...';
+                // Use enhanced stitching algorithm
                 const stitchedDataURL = await performEnhancedStitching();
                 window.stitchedPhotosphere = stitchedDataURL;
                 
@@ -1175,7 +1214,7 @@
             } catch (error) {
                 console.error('Stitching failed:', error);
                 hideLoading();
-                alert('Image processing failed. Please try capturing again with more overlap between images.');
+                alert('Stitching failed. Please try capturing more images or check the console for details.');
             }
         }
 
@@ -1189,112 +1228,71 @@
             }
         }
 
-        // Initialize photosphere viewer with error handling
+        // Initialize photosphere viewer
         function initializePhotosphereViewer() {
             const viewerContainer = document.getElementById('photosphereViewer');
             viewerContainer.innerHTML = '';
             
             try {
-                // Check if Panolens is available
-                if (typeof PANOLENS !== 'undefined') {
-                    const viewer = new PANOLENS.Viewer({
-                        container: viewerContainer,
-                        autoRotate: true,
-                        autoRotateSpeed: 0.3,
-                        controlBar: true,
-                        output: 'console'
-                    });
-                    
-                    const panorama = new PANOLENS.ImagePanorama(window.stitchedPhotosphere);
-                    viewer.add(panorama);
-                    
-                    photosphereViewer = viewer;
-                } else {
-                    throw new Error('Panolens not available');
-                }
+                const viewer = new PANOLENS.Viewer({
+                    container: viewerContainer,
+                    autoRotate: true,
+                    autoRotateSpeed: 0.5,
+                    controlBar: true,
+                    output: 'console'
+                });
+                
+                const panorama = new PANOLENS.ImagePanorama(window.stitchedPhotosphere);
+                viewer.add(panorama);
+                
+                photosphereViewer = viewer;
                 
             } catch (error) {
                 console.error('Viewer initialization failed:', error);
                 
-                // Fallback: simple image display
+                // Fallback display
                 const img = document.createElement('img');
                 img.src = window.stitchedPhotosphere;
-                img.style.cssText = `
-                    width: 100%; 
-                    height: 100%; 
-                    object-fit: contain;
-                    background: #000;
-                `;
+                img.style.cssText = 'width: 100%; height: 100%; object-fit: contain;';
                 viewerContainer.appendChild(img);
-                
-                // Add touch controls for panning
-                let isDragging = false;
-                let startX = 0;
-                let currentX = 0;
-                
-                img.addEventListener('touchstart', (e) => {
-                    isDragging = true;
-                    startX = e.touches[0].clientX;
-                });
-                
-                img.addEventListener('touchmove', (e) => {
-                    if (!isDragging) return;
-                    e.preventDefault();
-                    currentX = e.touches[0].clientX - startX;
-                    img.style.transform = `translateX(${currentX}px)`;
-                });
-                
-                img.addEventListener('touchend', () => {
-                    isDragging = false;
-                    startX = 0;
-                    currentX = 0;
-                    img.style.transform = 'translateX(0)';
-                });
             }
         }
 
-        // Improved immersive viewer (fallback for WebXR)
-        async function toggleImmersiveViewer() {
-            // Check for WebXR support first
-            if (navigator.xr) {
-                try {
-                    const isSupported = await navigator.xr.isSessionSupported('immersive-vr');
-                    if (isSupported) {
-                        await startWebXRSession();
-                        return;
-                    }
-                } catch (error) {
-                    console.log('WebXR VR not supported, trying AR...');
-                    
-                    try {
-                        const isARSupported = await navigator.xr.isSessionSupported('immersive-ar');
-                        if (isARSupported) {
-                            await startWebXRSession('immersive-ar');
-                            return;
-                        }
-                    } catch (arError) {
-                        console.log('WebXR AR not supported either');
-                    }
-                }
+        // WebXR photosphere viewer with fallback
+        async function toggleWebXRViewer() {
+            // Check WebXR support first
+            if (!navigator.xr) {
+                showWebXRUnsupportedMessage();
+                return;
             }
-            
-            // Fallback: Fullscreen immersive mode
-            startFullscreenImmersiveMode();
-        }
 
-        // Start WebXR session
-        async function startWebXRSession(sessionType = 'immersive-vr') {
             try {
-                immersiveSession = await navigator.xr.requestSession(sessionType);
+                // Check if immersive-vr is supported
+                const isSupported = await navigator.xr.isSessionSupported('immersive-vr');
+                if (!isSupported) {
+                    showWebXRUnsupportedMessage();
+                    return;
+                }
+
+                if (webXRSession) {
+                    await webXRSession.end();
+                    return;
+                }
+
+                // Request immersive VR session
+                webXRSession = await navigator.xr.requestSession('immersive-vr', {
+                    optionalFeatures: ['local-floor', 'bounded-floor']
+                });
                 
                 // Setup WebXR renderer
-                immersiveRenderer = new THREE.WebGLRenderer({ antialias: true });
-                immersiveRenderer.setPixelRatio(window.devicePixelRatio);
-                immersiveRenderer.xr.enabled = true;
+                webXRRenderer = new THREE.WebGLRenderer({ antialias: true });
+                webXRRenderer.setPixelRatio(window.devicePixelRatio);
+                webXRRenderer.setSize(window.innerWidth, window.innerHeight);
+                webXRRenderer.xr.enabled = true;
 
-                // Create immersive scene
-                immersiveScene = new THREE.Scene();
-                const immersiveCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                // Create WebXR scene
+                webXRScene = new THREE.Scene();
+                const webXRCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
                 // Create photosphere geometry
                 const sphereGeometry = new THREE.SphereGeometry(10, 64, 32);
@@ -1306,52 +1304,39 @@
                 // Create material (inside sphere)
                 const material = new THREE.MeshBasicMaterial({
                     map: texture,
-                    side: THREE.BackSide
+                    side: THREE.BackSide // Render inside of sphere
                 });
                 
                 const sphereMesh = new THREE.Mesh(sphereGeometry, material);
-                immersiveScene.add(sphereMesh);
+                webXRScene.add(sphereMesh);
 
-                // Add ambient lighting
+                // Add lighting
                 const ambientLight = new THREE.AmbientLight(0xffffff, 1);
-                immersiveScene.add(ambientLight);
+                webXRScene.add(ambientLight);
 
                 // Set up session
-                immersiveRenderer.xr.setSession(immersiveSession);
+                webXRRenderer.xr.setSession(webXRSession);
                 
                 // Render loop
-                immersiveRenderer.setAnimationLoop(() => {
-                    immersiveRenderer.render(immersiveScene, immersiveCamera);
+                webXRRenderer.setAnimationLoop(() => {
+                    webXRRenderer.render(webXRScene, webXRCamera);
                 });
 
                 // Handle session end
-                immersiveSession.addEventListener('end', () => {
-                    immersiveSession = null;
-                    immersiveRenderer.setAnimationLoop(null);
-                    console.log('WebXR session ended');
+                webXRSession.addEventListener('end', () => {
+                    webXRSession = null;
+                    webXRRenderer.setAnimationLoop(null);
                 });
 
-                console.log(`Started ${sessionType} session`);
-
             } catch (error) {
-                console.error('WebXR session failed:', error);
-                startFullscreenImmersiveMode();
+                console.error('WebXR failed:', error);
+                showWebXRUnsupportedMessage();
             }
         }
 
-        // Fallback fullscreen immersive mode
-        function startFullscreenImmersiveMode() {
-            const viewerContainer = document.getElementById('photosphereViewer');
-            
-            if (viewerContainer.requestFullscreen) {
-                viewerContainer.requestFullscreen();
-            } else if (viewerContainer.webkitRequestFullscreen) {
-                viewerContainer.webkitRequestFullscreen();
-            } else if (viewerContainer.mozRequestFullScreen) {
-                viewerContainer.mozRequestFullScreen();
-            } else {
-                alert('Fullscreen not supported. WebXR/VR not available on this device.');
-            }
+        // Show WebXR unsupported message with alternatives
+        function showWebXRUnsupportedMessage() {
+            alert('WebXR is not supported on this device. You can still view the photosphere using the built-in 360° viewer. For VR viewing, try opening this page in a WebXR-compatible browser like Chrome or Firefox on a VR-capable device.');
         }
 
         // Download photosphere
@@ -1364,9 +1349,7 @@
             const link = document.createElement('a');
             link.download = `photosphere_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.jpg`;
             link.href = window.stitchedPhotosphere;
-            document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link);
         }
 
         // Back to capture
@@ -1395,15 +1378,13 @@
                 threeCamera = null;
             }
             
-            // Clean up viewer
-            if (photosphereViewer && photosphereViewer.dispose) {
+            if (photosphereViewer) {
                 photosphereViewer.dispose();
                 photosphereViewer = null;
             }
 
-            // Clean up immersive session
-            if (immersiveSession) {
-                immersiveSession.end();
+            if (webXRSession) {
+                webXRSession.end();
             }
         }
 
@@ -1450,6 +1431,28 @@
             }, 100);
         });
 
+        // Check WebXR support on load
+        async function checkWebXRSupport() {
+            const webxrBtn = document.getElementById('webxrBtn');
+            
+            if (!navigator.xr) {
+                webxrBtn.classList.add('webxr-disabled');
+                webxrBtn.title = 'WebXR not supported on this device';
+                return;
+            }
+
+            try {
+                const isSupported = await navigator.xr.isSessionSupported('immersive-vr');
+                if (!isSupported) {
+                    webxrBtn.classList.add('webxr-disabled');
+                    webxrBtn.title = 'VR not supported on this device';
+                }
+            } catch (error) {
+                webxrBtn.classList.add('webxr-disabled');
+                webxrBtn.title = 'WebXR check failed';
+            }
+        }
+
         // Initialize app
         document.addEventListener('DOMContentLoaded', () => {
             console.log('PhotoSphere Capture Pro v2.1.0 initialized');
@@ -1471,21 +1474,11 @@
                 alert('WebGL not supported - 3D features will be limited.');
             }
 
-            // Check various immersive capabilities
-            if (navigator.xr) {
-                console.log('WebXR API detected');
-                navigator.xr.isSessionSupported('immersive-vr').then(supported => {
-                    if (supported) console.log('WebXR VR supported');
-                });
-                navigator.xr.isSessionSupported('immersive-ar').then(supported => {
-                    if (supported) console.log('WebXR AR supported');
-                });
-            } else {
-                console.log('WebXR not supported - using fallback immersive mode');
-            }
+            // Check WebXR support
+            checkWebXRSupport();
         });
 
-        // OpenCV ready callback (optional)
+        // OpenCV ready callback
         window.onOpenCVReady = onOpenCVReady;
 
         // Prevent context menu and zoom
